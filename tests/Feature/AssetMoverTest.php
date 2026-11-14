@@ -10,6 +10,7 @@ use App\Models\Layer;
 use App\Models\OutboxMessage;
 use App\Models\Room;
 use App\Services\AssetMover;
+use App\Services\Transfers;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Validation\ValidationException;
 use Tests\TestCase;
@@ -44,7 +45,7 @@ class AssetMoverTest extends TestCase
         $this->assertSame(0, $asset->moves()->count());
     }
 
-    public function test_move_to_other_branch_creates_transfer_act_and_1c_message(): void
+    public function test_move_to_other_branch_goes_to_draft_act_and_to_1c_on_issue(): void
     {
         $karaganda = $this->room(1);
         $astana = $this->room(2);
@@ -58,13 +59,51 @@ class AssetMoverTest extends TestCase
         $this->assertSame('plan', $move->origin);
 
         $act = AssetTransfer::sole();
+        $this->assertTrue($act->isDraft());
         $this->assertSame('П-'.today()->year.'-00001', $act->number);
         $this->assertSame($karaganda->floor->building->office_id, $act->from_office_id);
+        $this->assertSame(['INV-1'], $act->items()->pluck('inventory_number')->all());
+        $this->assertSame(0, OutboxMessage::count());
 
+        app(Transfers::class)->issue($act);
         $msg = OutboxMessage::sole();
         $this->assertSame('onec', $msg->target);
-        $this->assertSame('INV-1', $msg->payload['inventory_number']);
+        $this->assertSame('INV-1', $msg->payload['lines'][0]['inventory_number']);
         $this->assertSame('pending', $msg->status);
+
+        $this->expectException(ValidationException::class);
+        app(Transfers::class)->issue($act->fresh());
+    }
+
+    public function test_several_assets_one_act_per_direction(): void
+    {
+        $karaganda = $this->room(1);
+        $astana = $this->room(2);
+        $molA = Employee::create(['hr_id' => 11, 'full_name' => 'МОЛ А']);
+        $molB = Employee::create(['hr_id' => 12, 'full_name' => 'МОЛ Б']);
+        $first = $this->asset($karaganda, attrs: ['mol_id' => $molA->id]);
+        $second = Asset::create($first->only(['category_id', 'office_id', 'room_id', 'floor_id', 'mol_id']) + ['name' => 'Центрифуга', 'inventory_number' => 'INV-2']);
+        $third = Asset::create($first->only(['category_id', 'office_id', 'room_id', 'floor_id']) + ['name' => 'Микроскоп', 'inventory_number' => 'INV-3', 'mol_id' => $molB->id]);
+
+        $acts = app(AssetMover::class)->moveMany([$first, $second, $third], ['room_id' => $astana->id], 'Открытие лаборатории');
+
+        // Два МОЛ-отправителя – два акта, как два документа в 1С.
+        $this->assertCount(2, $acts);
+        $this->assertSame(2, AssetTransfer::count());
+        $this->assertEqualsCanonicalizing(['INV-1', 'INV-2'], AssetTransfer::where('from_mol_id', $molA->id)->sole()->items()->pluck('inventory_number')->all());
+
+        // Еще одна единица того же направления позже – в тот же черновик.
+        $fourth = Asset::create($first->only(['category_id']) + ['office_id' => $karaganda->floor->building->office_id, 'room_id' => $karaganda->id, 'mol_id' => $molA->id, 'name' => 'Дозатор', 'inventory_number' => 'INV-4']);
+        app(AssetMover::class)->move($fourth, ['room_id' => $astana->id]);
+        $this->assertSame(2, AssetTransfer::count());
+        $this->assertSame(3, AssetTransfer::where('from_mol_id', $molA->id)->sole()->items()->count());
+
+        // После оформления новое перемещение – уже новый акт.
+        app(Transfers::class)->issue(AssetTransfer::where('from_mol_id', $molA->id)->sole());
+        $this->assertCount(3, OutboxMessage::sole()->payload['lines']);
+        app(AssetMover::class)->move($fourth->fresh(), ['room_id' => $karaganda->id]);
+        app(AssetMover::class)->move($fourth->fresh(), ['room_id' => $astana->id]);
+        $this->assertSame(4, AssetTransfer::count());
     }
 
     public function test_move_inside_branch_without_mol_change_has_no_act(): void
@@ -87,23 +126,26 @@ class AssetMoverTest extends TestCase
         $this->assertSame($mol->id, AssetTransfer::sole()->to_mol_id);
     }
 
-    public function test_it_device_goes_to_it_and_1c_but_event_from_it_only_to_1c(): void
+    public function test_it_device_goes_to_it_at_once_event_from_it_only_to_act(): void
     {
         $karaganda = $this->room(1);
         $astana = $this->room(2);
         $asset = $this->asset($karaganda, it: true, attrs: ['it_device_id' => 77]);
 
-        app(AssetMover::class)->move($asset, ['room_id' => $astana->id]);
-        $this->assertEqualsCanonicalizing(['onec', 'it'], OutboxMessage::pluck('target')->all());
-        $this->assertSame(77, OutboxMessage::where('target', 'it')->sole()->payload['it_device_id']);
+        $move = app(AssetMover::class)->move($asset, ['room_id' => $astana->id]);
+        $toIt = OutboxMessage::sole();
+        $this->assertSame('it', $toIt->target);
+        $this->assertSame(77, $toIt->payload['it_device_id']);
+        $this->assertSame(AssetTransfer::sole()->number, $toIt->payload['transfer_number']);
+        $this->assertTrue($toIt->subject->is($move));
 
-        // Обратно – перемещение, сделанное в it.his.kz: акт и 1С, но в it не отправляем.
+        // Обратно – перемещение, сделанное в it.his.kz: свой черновик акта, в it не отправляем.
         $mover = app(AssetMover::class);
-        $move = $mover->move($asset->fresh(), ['room_id' => $karaganda->id], 'из it.his.kz', itMoveId: 501);
-        $this->assertSame('it', $move->origin);
+        $back = $mover->move($asset->fresh(), ['room_id' => $karaganda->id], 'из it.his.kz', itMoveId: 501);
+        $this->assertSame('it', $back->origin);
+        $this->assertSame('it', AssetTransfer::latest('id')->first()->origin);
         $this->assertSame(2, AssetTransfer::count());
         $this->assertSame(1, OutboxMessage::where('target', 'it')->count());
-        $this->assertSame(2, OutboxMessage::where('target', 'onec')->count());
 
         // Повторная доставка того же события – ничего.
         $this->assertNull($mover->move($asset->fresh(), ['room_id' => $astana->id], itMoveId: 501));

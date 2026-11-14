@@ -15,15 +15,20 @@ use Illuminate\Validation\ValidationException;
 /**
  * Перемещение и передача единицы учета: новое место и закрепление + запись в историю.
  *
- * Смена филиала или МОЛ – передача: создается акт (asset_transfers) и в той же
- * транзакции ставится отправка в 1С (документ перемещения ОС). В 1С пишет только эта
- * система, в том числе за перемещения ИТ-техники, сделанные в it.his.kz (origin = it).
- * ИТ-техника, перемещенная здесь, уходит еще и в it.his.kz – там ее место первично;
+ * Смена филиала или МОЛ – передача: строка в черновике акта с тем же направлением
+ * (Transfers::attach); в 1С акт уходит при оформлении (Transfers::issue). В 1С пишет только
+ * эта система, в том числе за перемещения ИТ-техники, сделанные в it.his.kz (origin = it).
+ * ИТ-техника, перемещенная здесь, сразу уходит в it.his.kz – там ее место первично;
  * пришедшее из it обратно не отправляется. Перестановка внутри помещения (только точка
  * на плане) в историю не пишется.
  */
 class AssetMover
 {
+    /** Акт, в который легла последняя передача (для moveMany). */
+    private ?AssetTransfer $lastTransfer = null;
+
+    public function __construct(private Transfers $transfers) {}
+
     /**
      * @param  array  $to  office_id, room_id, floor_id, x, y, rotation, mol_id, employee_id – что не передано, остается
      * @param  ?int  $itMoveId  перемещение пришло из it.his.kz: его id (повтор события – ничего не делаем)
@@ -79,62 +84,49 @@ class AssetMover
                 'moved_at' => now(),
             ]);
 
+            $this->lastTransfer = null;
             $handover = (int) $from['office_id'] !== (int) $to['office_id'] || (int) $from['mol_id'] !== (int) $to['mol_id'];
             if ($handover && $from['office_id']) {
-                $this->transfer($asset, $move, $comment);
+                $this->lastTransfer = $this->transfers->attach($asset, $move);
+            }
+
+            // Место ИТ-техники первично в it.his.kz – туда сразу, не дожидаясь оформления акта.
+            if ($asset->category->is_it && $move->origin !== 'it') {
+                $move->outbox()->create(['target' => 'it', 'action' => 'move', 'payload' => [
+                    'it_device_id' => $asset->it_device_id,
+                    'inventory_number' => $asset->inventory_number,
+                    'to_office_id' => $move->to_office_id,
+                    'to_room_id' => $move->to_room_id,
+                    'to_employee_id' => $move->to_employee_id,
+                    'transfer_number' => $this->lastTransfer?->number,
+                    'comment' => $comment,
+                ]]);
             }
 
             return $move;
         });
     }
 
-    private function transfer(Asset $asset, AssetMove $move, ?string $reason): AssetTransfer
+    /**
+     * Несколько единиц в одно место разом (выделили на плане и перетащили, или список
+     * "передать в филиал"). Все в одной транзакции; передачи ложатся в черновики актов
+     * по направлениям – обычно один акт, с разных МОЛ – по акту на МОЛ.
+     *
+     * @param  iterable<Asset>  $assets
+     * @return list<AssetTransfer> затронутые черновики актов
+     */
+    public function moveMany(iterable $assets, array $to, ?string $comment = null): array
     {
-        $transfer = AssetTransfer::create([
-            'number' => $this->nextNumber(),
-            'transfer_date' => today(),
-            'asset_id' => $asset->id,
-            'move_id' => $move->id,
-            'from_office_id' => $move->from_office_id,
-            'to_office_id' => $move->to_office_id,
-            'from_mol_id' => $move->from_mol_id,
-            'to_mol_id' => $move->to_mol_id,
-            'reason' => $reason,
-            'user_id' => Auth::id(),
-        ]);
+        return DB::transaction(function () use ($assets, $to, $comment) {
+            $transfers = [];
+            foreach ($assets as $asset) {
+                $move = $this->move($asset, $to, $comment);
+                if ($move && ($t = $this->lastTransfer)) {
+                    $transfers[$t->id] = $t;
+                }
+            }
 
-        $payload = [
-            'number' => $transfer->number,
-            'date' => $transfer->transfer_date->toDateString(),
-            'inventory_number' => $asset->inventory_number,
-            'accounting_ref' => $asset->accounting_ref,
-            'from_office_id' => $move->from_office_id,
-            'to_office_id' => $move->to_office_id,
-            'from_mol_id' => $move->from_mol_id,
-            'to_mol_id' => $move->to_mol_id,
-            'reason' => $reason,
-        ];
-
-        // В 1С – только то, что там учитывается как основное средство (есть ключ или инвентарный номер).
-        if ($asset->accounting_ref || $asset->inventory_number) {
-            $transfer->outbox()->create(['target' => 'onec', 'action' => 'transfer', 'payload' => $payload]);
-        }
-        if ($asset->category->is_it && $move->origin !== 'it') {
-            $transfer->outbox()->create(['target' => 'it', 'action' => 'transfer', 'payload' => $payload + [
-                'it_device_id' => $asset->it_device_id,
-                'to_employee_id' => $move->to_employee_id,
-            ]]);
-        }
-
-        return $transfer;
-    }
-
-    /** "П-2026-00042": сквозной номер в пределах года. */
-    private function nextNumber(): string
-    {
-        $prefix = 'П-'.today()->year.'-';
-        $last = AssetTransfer::where('number', 'like', $prefix.'%')->lockForUpdate()->max('number');
-
-        return $prefix.str_pad((string) ((int) substr((string) $last, strlen($prefix)) + 1), 5, '0', STR_PAD_LEFT);
+            return array_values($transfers);
+        });
     }
 }

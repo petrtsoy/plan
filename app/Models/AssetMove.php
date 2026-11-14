@@ -4,6 +4,7 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\MorphMany;
 
 /** Запись истории передач: откуда и куда (филиал, помещение, МОЛ, пользователь). Пишет AssetMover. */
 class AssetMove extends Model
@@ -45,5 +46,10 @@ class AssetMove extends Model
     public function user(): BelongsTo
     {
         return $this->belongsTo(User::class);
+    }
+
+    public function outbox(): MorphMany
+    {
+        return $this->morphMany(OutboxMessage::class, 'subject');
     }
 }

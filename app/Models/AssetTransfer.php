@@ -5,30 +5,36 @@ namespace App\Models;
 use App\Models\Concerns\Auditable;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\MorphMany;
 
-/** Акт передачи: смена филиала или МОЛ. Создает AssetMover, в 1С и it.his.kz уходит через outbox. */
+/**
+ * Акт передачи: одно направление (филиал и МОЛ откуда – куда), строки – единицы учета.
+ * Черновик собирает Transfers::attach(), оформляет Transfers::issue() – тогда уходит в 1С.
+ */
 class AssetTransfer extends Model
 {
     use Auditable;
 
     public string $auditType = 'transfer';
 
+    public const DRAFT = 'draft';
+
+    public const ISSUED = 'issued';
+
     protected $guarded = [];
+
+    // Как default в БД: иначе у только что созданной записи их нет до refresh().
+    protected $attributes = ['status' => self::DRAFT, 'origin' => 'plan'];
 
     protected function casts(): array
     {
-        return ['transfer_date' => 'date', 'onec_posted' => 'boolean'];
+        return ['transfer_date' => 'date', 'issued_at' => 'datetime', 'onec_posted' => 'boolean'];
     }
 
-    public function asset(): BelongsTo
+    public function items(): HasMany
     {
-        return $this->belongsTo(Asset::class)->withTrashed();
-    }
-
-    public function move(): BelongsTo
-    {
-        return $this->belongsTo(AssetMove::class, 'move_id');
+        return $this->hasMany(AssetTransferItem::class, 'transfer_id');
     }
 
     public function fromOffice(): BelongsTo
@@ -51,8 +57,18 @@ class AssetTransfer extends Model
         return $this->belongsTo(Employee::class, 'to_mol_id');
     }
 
+    public function user(): BelongsTo
+    {
+        return $this->belongsTo(User::class);
+    }
+
     public function outbox(): MorphMany
     {
         return $this->morphMany(OutboxMessage::class, 'subject');
+    }
+
+    public function isDraft(): bool
+    {
+        return $this->status === self::DRAFT;
     }
 }
