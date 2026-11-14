@@ -23,7 +23,7 @@ class Office extends Model
 
     public function buildings(): HasMany
     {
-        return $this->hasMany(Building::class)->orderBy('name');
+        return $this->hasMany(Building::class)->real()->orderBy('name');
     }
 
     public function assets(): HasMany

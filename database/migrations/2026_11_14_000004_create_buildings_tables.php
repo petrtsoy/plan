@@ -16,11 +16,40 @@ return new class extends Migration
 {
     public function up(): void
     {
+        // Проект – рассматриваем несколько зданий (свои или чужие, например под аренду или
+        // покупку) и примеряем в них оборудование. Итог – выбрано одно здание или ни одного.
+        Schema::create('projects', function (Blueprint $table) {
+            $table->id();
+            $table->string('name');
+            // Зачем: "Новая лаборатория в Астане", "Переезд поликлиники".
+            $table->text('goal')->nullable();
+            // Для какого филиала; пусто – филиала еще нет (новый город).
+            $table->foreignId('office_id')->nullable()->constrained()->nullOnDelete();
+            // open – рассматриваем; chosen – выбрано здание; rejected – не выбрали ничего.
+            $table->string('status', 16)->default('open')->index();
+            $table->unsignedBigInteger('chosen_building_id')->nullable();
+            $table->text('decision')->nullable();
+            $table->timestamp('decided_at')->nullable();
+            $table->foreignId('decided_by')->nullable()->constrained('users')->nullOnDelete();
+            $table->foreignId('user_id')->nullable()->constrained()->nullOnDelete();
+            $table->timestamps();
+        });
+
         Schema::create('buildings', function (Blueprint $table) {
             $table->id();
-            $table->foreignId('office_id')->constrained()->restrictOnDelete();
+            // У настоящего здания филиал обязателен; у кандидата проекта может не быть.
+            $table->foreignId('office_id')->nullable()->constrained()->restrictOnDelete();
+            // Здание из проекта. Кандидат (is_candidate) – не наше: в списках филиала не
+            // показывается, настоящие перемещения туда запрещены, только варианты расстановки.
+            // Выбранное в проекте становится настоящим, ссылка на проект остается – откуда взялось.
+            $table->foreignId('project_id')->nullable()->constrained()->nullOnDelete();
+            $table->boolean('is_candidate')->default(false)->index();
             $table->string('name');
             $table->string('address')->nullable();
+            // Для сравнения кандидатов: аренда или цена, общая площадь – из объявления или договора.
+            $table->decimal('total_area_m2', 10, 2)->nullable();
+            $table->decimal('price', 14, 2)->nullable();
+            $table->string('price_note')->nullable();
             $table->text('notes')->nullable();
             $table->timestamps();
         });
@@ -107,5 +136,6 @@ return new class extends Migration
         Schema::dropIfExists('plans');
         Schema::dropIfExists('floors');
         Schema::dropIfExists('buildings');
+        Schema::dropIfExists('projects');
     }
 };

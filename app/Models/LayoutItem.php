@@ -5,7 +5,7 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
-/** Позиция варианта: существующая единица (переставить) или модель из справочника (купить). */
+/** Позиция варианта: существующая единица (переставить), модель (купить) или потребность проекта. */
 class LayoutItem extends Model
 {
     protected $guarded = [];
@@ -30,6 +30,11 @@ class LayoutItem extends Model
         return $this->belongsTo(AssetModel::class, 'model_id');
     }
 
+    public function need(): BelongsTo
+    {
+        return $this->belongsTo(ProjectNeed::class, 'need_id');
+    }
+
     public function room(): BelongsTo
     {
         return $this->belongsTo(Room::class);
@@ -38,6 +43,6 @@ class LayoutItem extends Model
     /** Модель позиции: своя или существующей единицы – по ней габариты и требования. */
     public function effectiveModel(): ?AssetModel
     {
-        return $this->model ?? $this->asset?->model;
+        return $this->model ?? $this->asset?->model ?? $this->need?->model;
     }
 }

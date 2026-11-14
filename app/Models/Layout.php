@@ -8,7 +8,7 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 
-/** Вариант расстановки на этаже: примерка до покупки или переезда. */
+/** Вариант расстановки на этаже: примерка до покупки или переезда; project_id – вариант проекта. */
 class Layout extends Model
 {
     use Auditable;
@@ -28,6 +28,11 @@ class Layout extends Model
     public function floor(): BelongsTo
     {
         return $this->belongsTo(Floor::class);
+    }
+
+    public function project(): BelongsTo
+    {
+        return $this->belongsTo(Project::class);
     }
 
     public function items(): HasMany

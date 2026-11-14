@@ -43,12 +43,20 @@ class AssetMover
         $to = array_intersect_key($to, array_flip(Asset::PLACEMENT)) + $asset->only(Asset::PLACEMENT);
 
         // Помещение задает этаж и филиал; этаж без помещения (коридор) – филиал по зданию.
+        $building = null;
         if ($to['room_id']) {
             $room = Room::with('floor.building')->findOrFail($to['room_id']);
             $to['floor_id'] = $room->floor_id;
-            $officeId = $room->floor->building->office_id;
+            $building = $room->floor->building;
         } elseif ($to['floor_id']) {
-            $officeId = Building::whereKey(Floor::whereKey($to['floor_id'])->value('building_id'))->value('office_id');
+            $building = Building::find(Floor::whereKey($to['floor_id'])->value('building_id'));
+        }
+        // Здание-кандидат проекта еще не наше: туда – только в вариант расстановки проекта.
+        if ($building?->is_candidate) {
+            throw ValidationException::withMessages(['room_id' => 'Это здание проекта, а не настоящее: расставлять его можно только в варианте проекта.']);
+        }
+        if ($building) {
+            $officeId = $building->office_id;
         }
         if (isset($officeId)) {
             if (! empty($given['office_id']) && (int) $given['office_id'] !== (int) $officeId) {

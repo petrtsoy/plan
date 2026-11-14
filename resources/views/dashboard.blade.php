@@ -7,6 +7,7 @@
 <div class="table-wrap"><table>
     <tr><th>Показатель</th><th>Значение</th></tr>
     <tr><td>Зданий</td><td>{{ $buildings }}</td></tr>
+    <tr><td>Проектов рассматривается</td><td>{{ $projects }}</td></tr>
     @foreach(\App\Enums\AssetStatus::cases() as $s)
         <tr><td>{{ $s->label() }}</td><td>{{ $byStatus[$s->value] ?? 0 }}</td></tr>
     @endforeach
