@@ -1,0 +1,26 @@
+# Ротация логов plan.his.kz. Кладется в /etc/logrotate.d/plan.
+# copytruncate – файлы держат открытыми воркеры php-fpm.
+
+/var/log/plan/*.log {
+    su root ubuntu
+    weekly
+    rotate 8
+    size 50M
+    missingok
+    notifempty
+    compress
+    delaycompress
+    copytruncate
+}
+
+/var/www/plan/storage/logs/*.log {
+    su ubuntu ubuntu
+    weekly
+    rotate 8
+    size 50M
+    missingok
+    notifempty
+    compress
+    delaycompress
+    copytruncate
+}

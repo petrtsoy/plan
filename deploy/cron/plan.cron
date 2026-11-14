@@ -1,0 +1,6 @@
+# Планировщик plan.his.kz. Добавить в crontab пользователя ubuntu (crontab -e).
+# Внутри: hr:sync в 05:30.
+# Проверка: tail -20 /var/log/cron/plan_schedule.log
+
+# plan.his.kz – оборудование на планах
+* * * * * /usr/bin/flock -xn /var/lock/plan_schedule.lock -c "cd /var/www/plan && /usr/bin/php artisan schedule:run" >> /var/log/cron/plan_schedule.log 2>&1

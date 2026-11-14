@@ -1,0 +1,46 @@
+#!/usr/bin/env bash
+#
+# Обновление plan.his.kz из git: код, зависимости, миграции, кеши, php-fpm.
+# Фронтенд не собирается – CSS лежит в public/css как есть.
+#
+# Установка:
+#   sudo cp /var/www/plan/deploy/pull-plan /usr/local/bin/pull-plan
+#   sudo chmod +x /usr/local/bin/pull-plan
+# Запуск – от ubuntu: pull-plan
+
+set -euo pipefail
+
+APP_DIR=/var/www/plan
+
+if [ "$(id -u)" -eq 0 ]; then
+    echo "pull-plan: запускать от ubuntu, а не от root (sudo вызывается внутри)" >&2
+    exit 1
+fi
+
+step() {
+    printf '\n\033[1m==> %s\033[0m\n' "$1"
+}
+
+cd "$APP_DIR"
+
+step "git pull"
+git pull --ff-only
+
+step "composer install"
+composer install --no-dev --optimize-autoloader
+
+step "php artisan migrate"
+php artisan migrate --force
+# Новые ключи раздела "Настройки" – из .env в БД; заданные в разделе не трогает.
+php artisan plan:settings-import
+
+step "Пересборка кешей"
+php artisan optimize:clear
+php artisan config:cache
+php artisan route:cache
+php artisan view:cache
+
+step "Перезапуск php-fpm"
+sudo systemctl reload php8.3-fpm
+
+step "Готово: $(git log -1 --pretty='%h %s')"
