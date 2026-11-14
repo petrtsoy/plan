@@ -17,7 +17,7 @@ sudo mkdir -p /var/www/plan /var/log/plan && sudo chown ubuntu:ubuntu /var/www/p
 git clone git@github-plan:petrtsoy/plan.git /var/www/plan
 ```
 
-Репозиторий приватный. Deploy-ключ – как у it: свой ключ `~/.ssh/plan_deploy`, хост
+Репозиторий приватный. Deploy-ключ – как у it: свой ключ `~/.ssh/id_plan`, хост
 `github-plan` в `~/.ssh/config` (по образцу `github-it`), публичная часть – в
 GitHub: petrtsoy/plan – Settings – Deploy keys (только чтение).
 
