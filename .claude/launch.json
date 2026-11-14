@@ -1,0 +1,7 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    { "name": "plan", "runtimeExecutable": "php", "runtimeArgs": ["artisan", "serve", "--port=8010"], "port": 8010 },
+    { "name": "auth", "runtimeExecutable": "php", "runtimeArgs": ["-S", "localhost:8090", "-t", "../auth/public", "../auth/public/index.php"], "port": 8090 }
+  ]
+}

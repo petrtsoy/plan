@@ -126,6 +126,11 @@ php artisan serve
 | Бухгалтер | инвентаризация |
 | Просмотр | ничего, только смотрит |
 
+## Вход и регистрация системы
+
+Клиент в auth.his.kz, настройки, локальный запуск с auth, реестр it.his.kz и справочник HR –
+[docs/sso-and-registry.md](docs/sso-and-registry.md).
+
 ## HR
 
 Те же методы, что у it.his.kz (`/api/it/offices`, `/api/it/employees`, контракт
