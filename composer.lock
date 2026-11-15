@@ -4,7 +4,7 @@
         "Read more about it at https://getcomposer.org/doc/01-basic-usage.md#installing-dependencies",
         "This file is @generated automatically"
     ],
-    "content-hash": "cda2add6397422fb1a2eb5b9207f1575",
+    "content-hash": "4750811e4b40aa94d551ec6dfc3c14cc",
     "packages": [
         {
             "name": "brick/math",
@@ -1060,6 +1060,41 @@
                 }
             ],
             "time": "2026-08-24T17:13:02+00:00"
+        },
+        {
+            "name": "his/onec-odata",
+            "version": "v1.0.1",
+            "source": {
+                "type": "git",
+                "url": "git@github.com:petrtsoy/onec-odata.git",
+                "reference": "1713899898121118d5e0cc5805b6ee2036f682dc"
+            },
+            "dist": {
+                "type": "zip",
+                "url": "https://api.github.com/repos/petrtsoy/onec-odata/zipball/1713899898121118d5e0cc5805b6ee2036f682dc",
+                "reference": "1713899898121118d5e0cc5805b6ee2036f682dc",
+                "shasum": ""
+            },
+            "require": {
+                "ext-curl": "*",
+                "ext-json": "*",
+                "php": ">=8.0"
+            },
+            "type": "library",
+            "autoload": {
+                "psr-4": {
+                    "His\\OnecOdata\\": "src/"
+                }
+            },
+            "license": [
+                "proprietary"
+            ],
+            "description": "Клиент к стандартному интерфейсу OData 1С: чтение справочников и документов, с обходом известных особенностей платформы",
+            "support": {
+                "source": "https://github.com/petrtsoy/onec-odata/tree/v1.0.1",
+                "issues": "https://github.com/petrtsoy/onec-odata/issues"
+            },
+            "time": "2026-08-11T08:44:20+00:00"
         },
         {
             "name": "laravel/framework",

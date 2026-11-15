@@ -12,6 +12,7 @@ use App\Http\Controllers\FloorController;
 use App\Http\Controllers\InventoryController;
 use App\Http\Controllers\LabelController;
 use App\Http\Controllers\MaintenanceController;
+use App\Http\Controllers\OnecController;
 use App\Http\Controllers\OutboxController;
 use App\Http\Controllers\RoomController;
 use App\Http\Controllers\SettingsController;
@@ -42,6 +43,8 @@ Route::middleware(['auth', 'role'])->group(function () {
     Route::get('/floors/{floor}', [FloorController::class, 'show'])->name('floors.show');
     Route::get('/plans/{plan}/image', [FloorController::class, 'planImage'])->name('plans.image');
     Route::get('/assets/{asset}', [AssetController::class, 'show'])->name('assets.show');
+    // Сверка с 1С: только чтение и показ расхождений, править ничего не дает.
+    Route::get('/onec', [OnecController::class, 'index'])->name('onec.index');
     // Файлы к записям (акт ТО, свидетельство о поверке): только вошедшим.
     Route::get('/files/{attachment}', [FileController::class, 'show'])->name('files.show');
 
@@ -75,6 +78,7 @@ Route::middleware(['auth', 'role'])->group(function () {
     Route::middleware('role:assets')->group(function () {
         Route::post('/floors/{floor}/assets', [AssetController::class, 'store'])->name('floors.assets.store');
         Route::post('/assets/{asset}/place', [AssetController::class, 'place'])->name('assets.place');
+        Route::put('/onec/offices', [OnecController::class, 'updateOffice'])->name('onec.offices.update');
 
         // Акты передачи: кто правит оборудование, тот и оформляет (в том числе черновики из it.his.kz).
         Route::get('/transfers', [TransferController::class, 'index'])->name('transfers.index');

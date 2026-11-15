@@ -23,6 +23,7 @@ class Settings
         'brand' => 'Оформление',
         'sso' => 'Вход через auth.his.kz',
         'hr' => 'HR',
+        'onec' => '1С',
         'it' => 'it.his.kz',
         'mail' => 'Почта',
         'alerts' => 'Сигналы',
@@ -56,6 +57,10 @@ class Settings
             'hr.api_key' => ['hr', 'Ключ API', 'secret', 'services.hr.api_key', 'Ключ потребителя с галочкой "it.his.kz: сотрудники и подразделения"'],
             'hr.timeout' => ['hr', 'Таймаут запроса, сек', 'int', 'services.hr.timeout', null, ['min' => 5, 'max' => 300]],
 
+            'onec.base_url' => ['onec', 'Адрес базы 1С', 'url', 'services.onec.base_url', 'Корень публикации, без /odata/standard.odata/'],
+            'onec.username' => ['onec', 'Пользователь', 'text', 'services.onec.username', 'Отдельный пользователь 1С с правом только на чтение'],
+            'onec.password' => ['onec', 'Пароль', 'secret', 'services.onec.password', null],
+            'onec.timeout' => ['onec', 'Таймаут запроса, сек', 'int', 'services.onec.timeout', 'Обход справочника идет страницами, запас нужен', ['min' => 5, 'max' => 600]],
             'it.base_url' => ['it', 'Адрес it.his.kz', 'url', 'services.it.base_url', null],
             'it.api_key' => ['it', 'Ключ для отправки туда', 'secret', 'services.it.api_key', 'Им plan передает устройства в it.his.kz (заголовок X-Api-Key); берется в настройках it.his.kz'],
             'it.incoming_key' => ['it', 'Ключ для it.his.kz: события перемещений', 'secret', 'services.it.incoming_key', 'Им it.his.kz присылает POST /api/it/moves (заголовок X-Api-Key). Пусто – прием выключен', ['generate' => true]],
