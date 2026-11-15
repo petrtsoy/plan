@@ -70,6 +70,25 @@
     map.on('zoomend', function () { Object.keys(roomShapes).forEach(function (id) { fitLabel(roomShapes[id]); }); });
     F.rooms.forEach(drawRoom);
 
+    // Помещения из экспликации без контура: метка с номером, щелчок – обвести.
+    var pendingMarkers = {};
+    function drawPending(r) {
+        var m = L.marker(ll(r.label[0], r.label[1]), {
+            icon: L.divIcon({ className: 'room-pending', html: '<span title="' + esc(r.title) + '">' + esc(r.number || r.name) + '</span>', iconSize: null })
+        });
+        m.on('click', function (e) {
+            if (tool) return;
+            L.DomEvent.stop(e);
+            if (!F.canPlans) return showRoom(r);
+            startTool('room');
+            reshape = r;
+            say('Обведите ' + r.title + (r.area ? ' (' + r.area.toFixed(2).replace('.', ',') + ' м² по проекту)' : '') + '. Esc – отмена.');
+        });
+        m.addTo(roomsLayer);
+        pendingMarkers[r.id] = m;
+    }
+    (F.pending || []).forEach(drawPending);
+
     // --- Единицы ---
     var colorMode = 'layer';
     var markers = {};
@@ -220,6 +239,7 @@
             reshape = null;
             return send(F.urls.room.replace('__ID__', r.id), 'PUT', { polygon: poly }).then(function (res) {
                 r.polygon = poly; r.area = res.area;
+                if (pendingMarkers[r.id]) { roomsLayer.removeLayer(pendingMarkers[r.id]); delete pendingMarkers[r.id]; }
                 stopTool(); drawRoom(r); showRoom(r); toast('Контур сохранен.');
             });
         }
@@ -319,6 +339,52 @@
             toast(res.message);
         });
     }
+
+    // --- Импорт из проекта ---
+    var impBtn = document.getElementById('imp-go');
+    var preview = L.layerGroup().addTo(map);
+    if (impBtn) impBtn.onclick = function () {
+        var pages = { marks_page: val('imp-marks') || null, spec_page: val('imp-spec') || null };
+        var out = document.getElementById('imp-result');
+        impBtn.disabled = true;
+        out.innerHTML = '<p class="small muted">Читаю листы…</p>';
+        send(F.urls.import, 'POST', pages).then(function (res) {
+            impBtn.disabled = false;
+            preview.clearLayers();
+            res.rooms.forEach(function (r) {
+                if (r.label) L.circleMarker(ll(r.label[0], r.label[1]), { radius: 4, color: '#0f766e', weight: 2, fill: false }).bindTooltip(esc(r.number + ' ' + r.name)).addTo(preview);
+            });
+            res.items.forEach(function (it) {
+                L.circleMarker(ll(it.x, it.y), { radius: 3, color: '#b91c1c', weight: 1, fillOpacity: 0.6 }).bindTooltip(esc(it.mark + ' ' + it.name)).addTo(preview);
+            });
+            var cats = document.getElementById('tpl-categories').innerHTML;
+            var groups = Object.keys(res.groups).map(function (g) {
+                return '<label class="check"><input type="checkbox" data-imp-on="' + esc(g) + '" ' + (res.suggest[g] ? 'checked' : '') + '> ' +
+                    esc(res.groups[g].title) + ': ' + res.groups[g].count + '</label>' +
+                    '<select data-imp-cat="' + esc(g) + '">' + cats + '</select>';
+            }).join('');
+            out.innerHTML = '<p><strong>Помещений: ' + res.rooms.length + '</strong>, на плане – кружки. Те, что уже есть (по номеру), только дополнятся.</p>' +
+                (groups ? '<p class="small muted">Единицы по группам спецификации. Категория – основная для группы; внутри ее слоя подбирается по названию (стул – "Стулья и кресла").</p><div class="imp-groups">' + groups + '</div>' : '') +
+                (res.notes.length ? '<ul class="small muted imp-notes">' + res.notes.map(function (n) { return '<li>' + esc(n) + '</li>'; }).join('') + '</ul>' : '') +
+                '<div class="actions"><button type="button" class="btn primary" id="imp-ok">Импортировать</button><button type="button" class="btn link" id="imp-no">Отмена</button></div>';
+            out.querySelectorAll('[data-imp-cat]').forEach(function (sel) {
+                var g = sel.dataset.impCat;
+                if (res.suggest[g]) sel.value = res.suggest[g];
+            });
+            document.getElementById('imp-no').onclick = function () { preview.clearLayers(); out.innerHTML = ''; };
+            document.getElementById('imp-ok').onclick = function () {
+                var categories = {};
+                out.querySelectorAll('[data-imp-cat]').forEach(function (sel) {
+                    var on = out.querySelector('[data-imp-on="' + sel.dataset.impCat + '"]');
+                    if (on && on.checked) categories[sel.dataset.impCat] = parseInt(sel.value, 10);
+                });
+                this.disabled = true;
+                send(F.urls.import, 'POST', Object.assign({ confirm: true, categories: categories }, pages))
+                    .then(function () { location.reload(); })
+                    .catch(function () { document.getElementById('imp-ok').disabled = false; });
+            };
+        }).catch(function () { impBtn.disabled = false; out.innerHTML = ''; });
+    };
 
     // --- Служебное ---
     function val(id) { var el = document.getElementById(id); return el ? el.value.trim() : ''; }

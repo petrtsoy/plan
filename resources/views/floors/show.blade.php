@@ -69,6 +69,17 @@
                     <div class="actions"><button class="btn primary">Загрузить</button></div>
                 </form>
             </details>
+            @if($floor->plan?->source === \App\Enums\PlanSource::Pdf)
+                <details class="side-block">
+                    <summary><strong>Импорт из проекта</strong></summary>
+                    <p class="small muted">Подложка – лист {{ $floor->plan->page }} файла {{ $floor->plan->source_name }}. Помещения берутся из экспликации, мебель и оборудование – по меткам (М1, Э1…) листа расстановки и спецификации. Листы – из того же файла.</p>
+                    <label>Лист расстановки</label><input type="number" id="imp-marks" min="1" class="short">
+                    <label>Лист спецификации</label><input type="number" id="imp-spec" min="1" class="short">
+                    <p class="small muted">Пусто – только помещения.</p>
+                    <div class="actions"><button type="button" class="btn" id="imp-go">Разобрать</button></div>
+                    <div id="imp-result"></div>
+                </details>
+            @endif
             <details class="side-block">
                 <summary><strong>Этаж</strong></summary>
                 <form method="post" action="{{ route('floors.update', $floor) }}">

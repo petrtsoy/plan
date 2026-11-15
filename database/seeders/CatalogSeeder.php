@@ -21,6 +21,7 @@ class CatalogSeeder extends Seeder
             ['Мониторы и аппараты ИВЛ', true, true, false],
             ['Стерилизация и дезинфекция', true, false, false],
             ['Холодильное оборудование', true, true, false],
+            ['Прочее медицинское оборудование', true, false, false],
         ]],
         'lab' => ['Лабораторное оборудование', '#7c3aed', [
             ['Анализаторы', true, true, false],
@@ -29,6 +30,7 @@ class CatalogSeeder extends Seeder
             ['ПЦР и амплификаторы', true, true, false],
             ['Дозаторы и весы', false, true, false],
             ['Боксы и шкафы безопасности', true, false, false],
+            ['Прочее лабораторное оборудование', true, false, false],
         ]],
         'it' => ['ИТ-оборудование', '#2563eb', [
             ['Компьютеры и ноутбуки', false, false, true],
@@ -42,6 +44,7 @@ class CatalogSeeder extends Seeder
             ['Стулья и кресла', false, false, false],
             ['Шкафы и стеллажи', false, false, false],
             ['Кушетки и кровати', false, false, false],
+            ['Прочая мебель', false, false, false],
         ]],
         'fire' => ['Пожарная безопасность', '#ea580c', [
             ['Огнетушители', false, false, false],
@@ -54,6 +57,7 @@ class CatalogSeeder extends Seeder
             ['Точки медицинских газов', false, false, false],
             ['Кондиционеры и вентиляция', false, false, false],
             ['Датчики температуры и влажности', false, true, false],
+            ['Прочее инженерное оборудование', false, false, false],
         ]],
     ];
 
@@ -68,7 +72,7 @@ class CatalogSeeder extends Seeder
                     'is_medical' => $medical,
                     'is_measuring' => $measuring,
                     'is_it' => $it,
-                    'sort' => ($i + 1) * 10,
+                    'sort' => str_starts_with($cat, 'Проч') ? 900 : ($i + 1) * 10,
                 ]);
             }
         }

@@ -420,6 +420,10 @@ main.wide { max-width: none; padding: 0; display: flex; }
 .pin-off { outline: 2px dashed #b91c1c; outline-offset: 1px; }
 .leaflet-tooltip.room-label { background: transparent; border: 0; box-shadow: none; color: var(--brand-700); font-weight: 600; font-size: 12px; padding: 0; }
 .leaflet-tooltip.room-label::before { display: none; }
+.room-pending span { display: inline-block; transform: translate(-50%, -50%); white-space: nowrap; padding: 1px 5px; border: 1px dashed var(--brand-700); border-radius: 9px; background: rgba(255, 255, 255, .85); color: var(--brand-700); font-size: 11px; font-weight: 600; cursor: pointer; }
+.imp-groups label.check { display: flex; gap: 6px; align-items: center; margin-top: 8px; }
+.imp-groups select { width: 100%; }
+.imp-notes { margin: 8px 0 0; padding-left: 18px; }
 .leaflet-container { font: inherit; background: #fff; }
 @media (max-width: 900px) {
   .floor { flex-direction: column; }

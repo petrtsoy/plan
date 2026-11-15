@@ -9,7 +9,9 @@ use App\Models\Category;
 use App\Models\Floor;
 use App\Models\Layer;
 use App\Models\Plan;
+use App\Services\AssetMover;
 use App\Services\FloorPlans;
+use App\Services\ProjectImport;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -55,6 +57,12 @@ class FloorController extends Controller
                     'purpose' => $r->purpose, 'department' => $r->department,
                     'area' => $r->area_m2 !== null ? (float) $r->area_m2 : null, 'polygon' => $r->polygon,
                 ])->values(),
+                // Помещения из экспликации проекта без контура: метка "обведите меня".
+                'pending' => $floor->rooms->filter(fn ($r) => ! $r->polygon && $r->label_x !== null)->map(fn ($r) => [
+                    'id' => $r->id, 'number' => $r->number, 'name' => $r->name, 'title' => $r->title,
+                    'purpose' => $r->purpose, 'department' => $r->department,
+                    'area' => $r->area_m2 !== null ? (float) $r->area_m2 : null, 'label' => [$r->label_x, $r->label_y],
+                ])->values(),
                 'assets' => $assets->map(fn (Asset $a) => $this->assetPoint($a, $days))->values(),
                 'unplaced' => $floor->building->office_id
                     ? Asset::where('office_id', $floor->building->office_id)->whereNull('floor_id')
@@ -67,6 +75,7 @@ class FloorController extends Controller
                     'room' => route('rooms.update', ['room' => '__ID__']),
                     'assets' => route('floors.assets.store', $floor),
                     'place' => route('assets.place', ['asset' => '__ID__']),
+                    'import' => route('floors.import', $floor),
                 ],
             ],
         ]);
@@ -113,6 +122,60 @@ class FloorController extends Controller
         $plans->calibrate($plan, array_map(fn ($p) => array_map('floatval', $p), $data['points']), (float) $data['value']);
 
         return response()->json(['ok' => true, 'message' => 'Масштаб задан: 1 м = '.round(1 / $plan->meters_per_px).' px.']);
+    }
+
+    /**
+     * Импорт из рабочего проекта: помещения из экспликации, мебель и оборудование по меткам.
+     * Без confirm – что получится (просмотр), с confirm – создать.
+     */
+    public function import(Request $request, Floor $floor, ProjectImport $import, AssetMover $mover): JsonResponse
+    {
+        $data = $request->validate([
+            'marks_page' => ['nullable', 'integer', 'min:1', 'max:999'],
+            'spec_page' => ['nullable', 'integer', 'min:1', 'max:999'],
+            'categories' => ['array'], 'categories.*' => ['nullable', 'integer', 'exists:categories,id'],
+            'confirm' => ['boolean'],
+        ]);
+        abort_unless($floor->plan, 422, 'Сначала загрузите подложку – лист проекта с планом этажа.');
+        abort_if($floor->building->is_candidate, 422, 'Здание проекта: сюда – только варианты расстановки.');
+
+        $marks = $data['marks_page'] ?? null;
+        $spec = $data['spec_page'] ?? null;
+        $result = $import->analyze($floor->plan, $marks, $spec);
+
+        if (! $request->boolean('confirm')) {
+            $cats = Category::with('layer')->get();
+
+            return response()->json(['ok' => true] + $result + [
+                'suggest' => collect($result['groups'])->map(fn ($g, $key) => self::suggestCategory($key, $cats)?->id)->all(),
+            ]);
+        }
+
+        // Единицы ставит тот, кто правит расстановку; без этого права – только помещения.
+        $categories = $request->user()->edits(Area::Assets) ? array_filter($data['categories'] ?? []) : [];
+        $done = $import->apply($floor->plan, $result, $categories, $mover);
+        $message = "Импорт: помещений новых {$done['rooms']}, единиц {$done['assets']}.";
+        $request->session()->flash('ok', $message);
+
+        return response()->json(['ok' => true, 'message' => $message]);
+    }
+
+    /**
+     * Основная категория группы спецификации ("Прочее…" в слое): мебель – слой мебели,
+     * оборудование и электрооборудование – медицинское. Точнее – по названию при импорте.
+     */
+    private static function suggestCategory(string $group, $categories): ?Category
+    {
+        $layer = match (true) {
+            str_contains($group, 'мебел') => 'furniture',
+            str_contains($group, 'лаборатор') => 'lab',
+            str_contains($group, 'оборуд') => 'medical',
+            default => null,
+        };
+
+        $inLayer = $layer ? $categories->filter(fn ($c) => $c->layer?->code === $layer) : collect();
+
+        return $inLayer->first(fn ($c) => str_starts_with($c->name, 'Проч')) ?? $inLayer->first();
     }
 
     /** Точка единицы для плана: цвет слоя и срок ТО (худший из действующих). */

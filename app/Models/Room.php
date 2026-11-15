@@ -29,7 +29,7 @@ class Room extends Model
 
     protected function casts(): array
     {
-        return ['polygon' => 'array', 'specs' => 'array', 'area_m2' => 'decimal:2'];
+        return ['polygon' => 'array', 'specs' => 'array', 'area_m2' => 'decimal:2', 'label_x' => 'float', 'label_y' => 'float'];
     }
 
     public function floor(): BelongsTo

@@ -35,6 +35,11 @@ return [
         ],
     ],
 
+    // Папка pdftoppm и pdftotext (poppler-utils). Пусто – ищутся в PATH (на сервере – /usr/bin).
+    'poppler' => [
+        'bin' => env('POPPLER_BIN', ''),
+    ],
+
     // Вход через SSO auth.his.kz (OAuth 2.0 Authorization Code). ЭЦП/пароль
     // проверяет сам сервер авторизации, сюда приходит ИИН в userinfo.
     'sso' => [

@@ -109,6 +109,10 @@ class FloorPlans
             Room::where('floor_id', $floorId)->whereNotNull('polygon')->each(function (Room $room) use ($map) {
                 $room->update(['polygon' => array_map(fn ($p) => $map($p[0], $p[1]), $room->polygon), 'area_m2' => null]);
             });
+            Room::where('floor_id', $floorId)->whereNotNull('label_x')->each(function (Room $room) use ($map) {
+                [$x, $y] = $map((float) $room->label_x, (float) $room->label_y);
+                $room->update(['label_x' => $x, 'label_y' => $y]);
+            });
             Zone::where('floor_id', $floorId)->each(function (Zone $zone) use ($map) {
                 $zone->update(['polygon' => array_map(fn ($p) => $map($p[0], $p[1]), $zone->polygon)]);
             });
@@ -125,6 +129,14 @@ class FloorPlans
     }
 
     /** Помещение этажа, в котором точка (первое по номеру), или null – коридор, вне контуров. */
+    /** Программа poppler-utils: из services.poppler.bin, иначе по имени из PATH. */
+    public static function poppler(string $tool): string
+    {
+        $dir = rtrim((string) config('services.poppler.bin'), '/\\');
+
+        return $dir !== '' ? $dir.DIRECTORY_SEPARATOR.$tool : $tool;
+    }
+
     public function roomAt(Floor $floor, float $x, float $y): ?Room
     {
         return $floor->rooms()->whereNotNull('polygon')->get()
@@ -142,7 +154,7 @@ class FloorPlans
             throw ValidationException::withMessages(['file' => 'Сервер занят другим чертежом, повторите через минуту.']);
         }
         try {
-            $process = new Process(['pdftoppm', '-png', '-singlefile', '-f', (string) $page, '-l', (string) $page,
+            $process = new Process([self::poppler('pdftoppm'), '-png', '-singlefile', '-f', (string) $page, '-l', (string) $page,
                 '-r', '150', '-scale-to', (string) self::PDF_MAX_PX, $disk->path($pdfPath), $out]);
             $process->setTimeout(150);
             $process->run();
