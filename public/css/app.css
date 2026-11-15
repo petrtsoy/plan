@@ -395,3 +395,34 @@ dialog.modal::backdrop { background: rgb(15 23 42 / .45); }
 .modal-x:hover { color: var(--text); }
 .modal-body { padding: 16px 20px; }
 .modal-body .panel { padding: 14px; }
+
+/* --- План этажа: карта во всю ширину, панель справа --- */
+main.wide { max-width: none; padding: 0; display: flex; }
+.floor { display: flex; flex: 1; min-height: calc(100vh - 65px); }
+.floor-map { flex: 1; position: relative; background: #fff; min-height: 480px; }
+.floor-map.drawing { cursor: crosshair; }
+.floor-empty { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; padding: 32px; z-index: 500; pointer-events: none; }
+.floor-side { width: 320px; flex: none; border-left: 1px solid var(--line); background: var(--panel); padding: 16px; overflow-y: auto; max-height: calc(100vh - 65px); }
+.floor-side h2 { font-size: 13px; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); margin: 20px 0 8px; }
+.floor-side label { margin-top: 8px; }
+.floor-title { margin: 0 0 4px; font-size: 20px; }
+.tools { display: flex; gap: 6px; flex-wrap: wrap; margin: 12px 0 8px; }
+.hint { background: var(--warn-weak); color: var(--warn); border-radius: var(--radius-sm); padding: 8px 12px; font-size: 13px; margin-bottom: 8px; }
+.side-block { border: 1px solid var(--line); border-radius: var(--radius-sm); padding: 12px; margin: 8px 0; }
+.side-block summary { cursor: pointer; }
+.side-block input:not([type=checkbox]):not([type=radio]), .side-block select { width: 100%; }
+.side-block input.short { width: 96px; }
+.layer-list { display: flex; flex-direction: column; gap: 2px; }
+.dot { display: inline-block; width: 10px; height: 10px; border-radius: 50%; vertical-align: middle; }
+.legend { display: flex; flex-direction: column; gap: 2px; margin-top: 6px; }
+.due-overdue { background: #dc2626; } .due-soon { background: #f59e0b; } .due-ok { background: #16a34a; } .due-none { background: #94a3b8; }
+.pin { display: block; width: 16px; height: 16px; border-radius: 50%; border: 2px solid #fff; box-shadow: 0 0 0 1px rgba(15, 23, 42, .5), 0 1px 3px rgba(15, 23, 42, .4); }
+.pin-off { outline: 2px dashed #b91c1c; outline-offset: 1px; }
+.leaflet-tooltip.room-label { background: transparent; border: 0; box-shadow: none; color: var(--brand-700); font-weight: 600; font-size: 12px; padding: 0; }
+.leaflet-tooltip.room-label::before { display: none; }
+.leaflet-container { font: inherit; background: #fff; }
+@media (max-width: 900px) {
+  .floor { flex-direction: column; }
+  .floor-map { min-height: 60vh; }
+  .floor-side { width: auto; max-height: none; border-left: 0; border-top: 1px solid var(--line); }
+}

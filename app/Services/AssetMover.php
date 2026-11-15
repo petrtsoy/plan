@@ -70,7 +70,8 @@ class AssetMover
 
         $from = $asset->only(Asset::PLACEMENT);
         $keys = ['office_id', 'room_id', 'mol_id', 'employee_id'];
-        $relocated = array_map('intval', array_intersect_key($from, array_flip($keys))) !== array_map('intval', array_intersect_key($to, array_flip($keys)));
+        // != а не !==: ключи в $to идут в том порядке, в каком их передали.
+        $relocated = array_map('intval', array_intersect_key($from, array_flip($keys))) != array_map('intval', array_intersect_key($to, array_flip($keys)));
 
         return DB::transaction(function () use ($asset, $from, $to, $relocated, $comment, $layoutId, $itMoveId) {
             $asset->update($to);

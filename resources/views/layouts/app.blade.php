@@ -11,6 +11,7 @@
     <link href="https://fonts.bunny.net/css?family=inter:400,500,600,700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="{{ asset('css/app.css') }}?v={{ filemtime(public_path('css/app.css')) }}">
     {{-- Свернутую панель ставим до отрисовки, иначе она мигает широкой (состояние – как в supply, localStorage). --}}
+    @stack('head')
     <script>try { if (localStorage.getItem('sb-collapsed') === '1') document.documentElement.classList.add('sb-collapsed'); } catch (e) {}</script>
 </head>
 <body>
@@ -20,6 +21,7 @@
     // Меню – как в supply: темная панель слева, активный пункт подсвечен фирменным цветом.
     $nav = array_filter([
         ['Главная', route('dashboard'), 'home', request()->routeIs('dashboard')],
+        ['Здания и планы', route('buildings.index'), 'building', request()->routeIs('buildings.*', 'floors.*')],
         ['Журнал', route('audit'), 'journal', request()->routeIs('audit')],
         $user->isAdmin() ? ['Пользователи', route('admin.users'), 'shield', request()->routeIs('admin.users*')] : null,
         $user->isAdmin() ? ['Настройки', route('admin.settings'), 'cog', request()->routeIs('admin.settings*')] : null,
@@ -64,7 +66,7 @@
             <button type="button" class="sb-open" data-sb-open aria-label="Меню"><x-icon name="menu"/></button>
             <div class="spacer"></div>
         </header>
-        <main>
+        <main class="@yield('main_class')">
             @if($errors->any())
                 <ul class="errors">@foreach($errors->all() as $e)<li>{{ $e }}</li>@endforeach</ul>
             @endif
@@ -104,5 +106,6 @@
     });
 })();
 </script>
+@stack('scripts')
 </body>
 </html>

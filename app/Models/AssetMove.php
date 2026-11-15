@@ -23,6 +23,16 @@ class AssetMove extends Model
         return $this->belongsTo(Asset::class)->withTrashed();
     }
 
+    public function fromOffice(): BelongsTo
+    {
+        return $this->belongsTo(Office::class, 'from_office_id');
+    }
+
+    public function toOffice(): BelongsTo
+    {
+        return $this->belongsTo(Office::class, 'to_office_id');
+    }
+
     public function fromRoom(): BelongsTo
     {
         return $this->belongsTo(Room::class, 'from_room_id');
