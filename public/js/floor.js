@@ -1,7 +1,7 @@
 /*
  * План этажа: Leaflet CRS.Simple, координаты – метры этажа (x вправо, y вниз).
  * В Leaflet точка [lat, lng] = [-y, x]. Пока масштаб не задан, метр – пиксель картинки.
- * Инструменты: масштаб (две точки), помещение (обвести контур), поставить единицу.
+ * Инструменты: масштаб (две точки или контур с известной площадью), помещение (обвести контур), поставить единицу.
  */
 (function () {
     var F = window.FLOOR;
@@ -27,7 +27,16 @@
     if (!bounds && all.length) {
         bounds = L.latLngBounds(all.map(function (q) { return ll(q[0], q[1]); })).pad(0.2);
     }
-    map.fitBounds(bounds || L.latLngBounds(ll(0, 0), ll(30, 20)));
+    var home = bounds || L.latLngBounds(ll(0, 0), ll(30, 20));
+    map.fitBounds(home);
+    // Контейнер без размера (вкладка в фоне, раскладка еще не готова) – вписать, когда размер появится.
+    var fitted = map.getSize().x > 0 && map.getSize().y > 0;
+    if (window.ResizeObserver) {
+        new ResizeObserver(function () {
+            map.invalidateSize();
+            if (!fitted && map.getSize().x > 0 && map.getSize().y > 0) { fitted = true; map.fitBounds(home); }
+        }).observe(map.getContainer());
+    }
     if (F.plan && F.plan.calibrated) L.control.scale({ metric: true, imperial: false }).addTo(map);
     // В CRS.Simple линейка считает единицы как метры – это и есть метры этажа.
 
@@ -39,9 +48,26 @@
         var shape = L.polygon(r.polygon.map(function (q) { return ll(q[0], q[1]); }), { color: '#0f766e', weight: 1.5, fillColor: '#14b8a6', fillOpacity: 0.08 });
         shape.bindTooltip(esc(r.title), { permanent: true, direction: 'center', className: 'room-label' });
         shape.on('click', function (e) { if (!tool) { L.DomEvent.stop(e); showRoom(r); } });
+        shape.room = r;
         shape.addTo(roomsLayer);
         roomShapes[r.id] = shape;
+        fitLabel(shape);
     }
+    // Подпись по размеру помещения на экране: номер и название, только номер или ничего.
+    function fitLabel(shape) {
+        var tip = shape.getTooltip(), b = shape.getBounds();
+        if (!tip || !map.hasLayer(shape)) return;
+        var room = map.latLngToContainerPoint(b.getNorthEast()).x - map.latLngToContainerPoint(b.getSouthWest()).x - 4;
+        var texts = [shape.room.title, shape.room.number || ''];
+        for (var i = 0; i < texts.length; i++) {
+            tip.setContent(esc(texts[i]));
+            var el = tip.getElement();
+            el.style.display = '';
+            if (texts[i] && el.offsetWidth <= room) return;
+        }
+        tip.getElement().style.display = 'none';
+    }
+    map.on('zoomend', function () { Object.keys(roomShapes).forEach(function (id) { fitLabel(roomShapes[id]); }); });
     F.rooms.forEach(drawRoom);
 
     // --- Единицы ---
@@ -85,7 +111,7 @@
         };
     });
     document.querySelector('[data-rooms]').onchange = function () {
-        if (this.checked) roomsLayer.addTo(map); else map.removeLayer(roomsLayer);
+        if (this.checked) { roomsLayer.addTo(map); Object.keys(roomShapes).forEach(function (id) { fitLabel(roomShapes[id]); }); } else map.removeLayer(roomsLayer);
     };
     document.querySelectorAll('input[name=color]').forEach(function (r) {
         r.onchange = function () {
@@ -108,7 +134,7 @@
         points = [];
         document.querySelectorAll('[data-tool]').forEach(function (b) { b.classList.toggle('primary', b.dataset.tool === name); });
         map.getContainer().classList.add('drawing');
-        if (name === 'calibrate') say('Щелкните по двум концам отрезка, длина которого известна (стена, размерная линия). Esc – отмена.');
+        if (name === 'calibrate') say('Щелкните по двум концам отрезка, длина которого известна (стена, размерная линия). Если размеров нет – обведите помещение с известной площадью из экспликации. Esc – отмена.');
         if (name === 'room') say('Щелкайте по углам помещения. Закончить – щелчок по первой точке или двойной щелчок. Esc – отмена.');
         if (name === 'place') placeForm(opts);
     }
@@ -127,38 +153,56 @@
     map.on('click', function (e) {
         var q = xy(e.latlng);
         if (tool === 'calibrate') {
+            // Две точки – отрезок; щелкают дальше – контур помещения, замыкают на первой точке.
+            if (points.length >= 3 && nearFirst(e.latlng)) return calibrateForm(true);
             points.push(q);
-            L.circleMarker(e.latlng, { radius: 4, color: '#b91c1c' }).addTo(temp);
-            if (points.length === 2) {
-                L.polyline(points.map(function (t) { return ll(t[0], t[1]); }), { color: '#b91c1c', dashArray: '4 4' }).addTo(temp);
-                calibrateForm();
-            }
+            drawPath('#b91c1c');
+            if (points.length === 2) calibrateForm(false);
+            else if (points.length > 2) { panel.innerHTML = ''; say('Обводите помещение дальше. Закончить – щелчок по первой точке или двойной щелчок.'); }
         } else if (tool === 'room') {
-            if (points.length >= 3 && map.latLngToContainerPoint(e.latlng).distanceTo(map.latLngToContainerPoint(ll(points[0][0], points[0][1]))) < 10) {
-                return finishRoom();
-            }
+            if (points.length >= 3 && nearFirst(e.latlng)) return finishRoom();
             points.push(q);
-            temp.clearLayers();
-            L.polyline(points.map(function (t) { return ll(t[0], t[1]); }), { color: '#0f766e', weight: 2 }).addTo(temp);
-            points.forEach(function (t, i) { L.circleMarker(ll(t[0], t[1]), { radius: i ? 3 : 5, color: '#0f766e' }).addTo(temp); });
+            drawPath('#0f766e');
         } else if (tool === 'place' && placing) {
             placeAt(q);
         }
     });
-    map.on('dblclick', function () { if (tool === 'room' && points.length >= 3) finishRoom(); });
+    map.on('dblclick', function () {
+        if (tool === 'room' && points.length >= 3) finishRoom();
+        if (tool === 'calibrate' && points.length >= 3) calibrateForm(true);
+    });
+    function nearFirst(latlng) {
+        return map.latLngToContainerPoint(latlng).distanceTo(map.latLngToContainerPoint(ll(points[0][0], points[0][1]))) < 10;
+    }
+    function drawPath(color) {
+        temp.clearLayers();
+        L.polyline(points.map(function (t) { return ll(t[0], t[1]); }), { color: color, weight: 2, dashArray: tool === 'calibrate' ? '4 4' : null }).addTo(temp);
+        points.forEach(function (t, i) { L.circleMarker(ll(t[0], t[1]), { radius: i ? 3 : 5, color: color }).addTo(temp); });
+    }
 
-    // Масштаб
-    function calibrateForm() {
+    // Масштаб: длина отрезка или площадь обведенного помещения
+    function calibrateForm(byArea) {
         hint.hidden = true;
-        var px = Math.hypot(points[1][0] - points[0][0], points[1][1] - points[0][1]);
-        panel.innerHTML = '<div class="side-block"><strong>Длина отрезка</strong>' +
-            (F.plan.calibrated ? '<p class="small muted">Сейчас по плану: ' + px.toFixed(2) + ' м</p>' : '') +
-            '<label>Метров</label><input type="number" step="0.01" min="0.01" id="cal-m" autofocus>' +
+        var now;
+        if (byArea) {
+            tool = 'calibrate-form';
+            temp.clearLayers();
+            L.polygon(points.map(function (t) { return ll(t[0], t[1]); }), { color: '#b91c1c', weight: 2, dashArray: '4 4', fillOpacity: 0.1 }).addTo(temp);
+            now = Math.abs(points.reduce(function (s, p, i) { var n = points[(i + 1) % points.length]; return s + p[0] * n[1] - n[0] * p[1]; }, 0)) / 2;
+        } else {
+            now = Math.hypot(points[1][0] - points[0][0], points[1][1] - points[0][1]);
+        }
+        panel.innerHTML = '<div class="side-block"><strong>' + (byArea ? 'Площадь помещения' : 'Длина отрезка') + '</strong>' +
+            (F.plan.calibrated ? '<p class="small muted">Сейчас по плану: ' + now.toFixed(2) + (byArea ? ' м²' : ' м') + '</p>' : '') +
+            '<label>' + (byArea ? 'Квадратных метров' : 'Метров') + '</label><input type="number" step="0.01" min="0.01" id="cal-m">' +
+            (byArea ? '' : '<p class="small muted">Размеров нет? Щелкайте дальше и обведите помещение – масштаб задается по его площади.</p>') +
             '<div class="actions"><button class="btn primary" id="cal-ok">Задать масштаб</button><button class="btn link" id="cal-no">Отмена</button></div></div>';
-        document.getElementById('cal-m').focus();
+        var input = document.getElementById('cal-m');
+        input.focus();
+        input.onkeydown = function (e) { if (e.key === 'Enter') document.getElementById('cal-ok').click(); };
         document.getElementById('cal-no').onclick = stopTool;
         document.getElementById('cal-ok').onclick = function () {
-            send(F.urls.calibrate, 'POST', { p1: points[0], p2: points[1], meters: parseFloat(document.getElementById('cal-m').value) })
+            send(F.urls.calibrate, 'POST', { points: points, value: parseFloat(input.value.replace(',', '.')) })
                 .then(function (res) { sessionToast(res.message); location.reload(); });
         };
     }

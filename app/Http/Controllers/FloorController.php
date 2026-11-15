@@ -103,13 +103,14 @@ class FloorController extends Controller
 
     public function calibrate(Request $request, Plan $plan, FloorPlans $plans): JsonResponse
     {
+        // Две точки – длина в метрах, контур – площадь в м².
         $data = $request->validate([
-            'p1' => ['required', 'array', 'size:2'], 'p1.*' => ['numeric'],
-            'p2' => ['required', 'array', 'size:2'], 'p2.*' => ['numeric'],
-            'meters' => ['required', 'numeric', 'gt:0', 'max:1000'],
-        ]);
+            'points' => ['required', 'array', 'min:2', 'max:200'],
+            'points.*' => ['array', 'size:2'], 'points.*.*' => ['numeric'],
+            'value' => ['required', 'numeric', 'gt:0', 'max:100000'],
+        ], ['value.required' => 'Укажите длину или площадь.']);
 
-        $plans->calibrate($plan, array_map('floatval', $data['p1']), array_map('floatval', $data['p2']), (float) $data['meters']);
+        $plans->calibrate($plan, array_map(fn ($p) => array_map('floatval', $p), $data['points']), (float) $data['value']);
 
         return response()->json(['ok' => true, 'message' => 'Масштаб задан: 1 м = '.round(1 / $plan->meters_per_px).' px.']);
     }

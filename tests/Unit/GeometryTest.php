@@ -30,8 +30,14 @@ class GeometryTest extends TestCase
     public function test_plan_pixels_to_meters_and_back(): void
     {
         $plan = new Plan(['offset_x' => 10, 'offset_y' => 5, 'rotation' => 30]);
-        $plan->calibrate([100, 100], [400, 500], 10.0);
+        $plan->calibrate([[100, 100], [400, 500]], 10.0);
         $this->assertEqualsWithDelta(0.02, $plan->meters_per_px, 1e-9);
+
+        // По площади: прямоугольник 500 x 200 px – это 10 м²: 1 px = 1 см.
+        $byArea = new Plan;
+        $byArea->calibrate([[0, 0], [500, 0], [500, 200], [0, 200]], 10.0);
+        $this->assertEqualsWithDelta(0.01, $byArea->meters_per_px, 1e-9);
+        $this->assertEquals(10, $byArea->calibration['area']);
 
         [$x, $y] = $plan->toMeters(250, 120);
         [$px, $py] = $plan->toPixels($x, $y);

@@ -76,25 +76,28 @@ class FloorPlans
     }
 
     /**
-     * Масштаб по двум точкам (в координатах этажа, как их показывает план) и расстоянию в метрах.
+     * Масштаб по точкам в координатах этажа, как их показывает план: две точки и длина в метрах
+     * или контур помещения (3+ точки) и его площадь в м².
      *
      * Первая калибровка этажа: до нее координаты были в пикселях картинки, поэтому все
      * расставленное пересчитывается и остается на своем месте картинки. У замененной
      * подложки (раньше уже был масштаб) меняется только картинка – метры главнее.
      */
-    public function calibrate(Plan $plan, array $p1, array $p2, float $meters): void
+    public function calibrate(Plan $plan, array $points, float $value): void
     {
         $old = clone $plan;
-        $px1 = $old->toPixels($p1[0], $p1[1]);
-        $px2 = $old->toPixels($p2[0], $p2[1]);
-        if (hypot($px2[0] - $px1[0], $px2[1] - $px1[1]) < 5) {
-            throw ValidationException::withMessages(['meters' => 'Точки слишком близко: отметьте концы известного отрезка подальше друг от друга.']);
+        $px = array_map(fn ($p) => $old->toPixels($p[0], $p[1]), $points);
+        if (count($px) === 2 && hypot($px[1][0] - $px[0][0], $px[1][1] - $px[0][1]) < 5) {
+            throw ValidationException::withMessages(['value' => 'Точки слишком близко: отметьте концы известного отрезка подальше друг от друга.']);
+        }
+        if (count($px) > 2 && Geometry::area($px) < 100) {
+            throw ValidationException::withMessages(['value' => 'Контур слишком маленький: обведите помещение целиком.']);
         }
 
         $first = ! $plan->floor->plans()->whereKeyNot($plan->id)->whereNotNull('meters_per_px')->exists();
 
-        DB::transaction(function () use ($plan, $old, $px1, $px2, $meters, $first) {
-            $plan->calibrate($px1, $px2, $meters);
+        DB::transaction(function () use ($plan, $old, $px, $value, $first) {
+            $plan->calibrate($px, $value);
             $plan->save();
 
             if (! $first) {

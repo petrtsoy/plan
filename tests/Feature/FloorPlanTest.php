@@ -55,7 +55,7 @@ class FloorPlanTest extends TestCase
         $this->get("/plans/{$plan->id}/image")->assertOk();
 
         // Отрезок 600 px – это 6 м: 1 px = 1 см.
-        $this->postJson("/plans/{$plan->id}/calibrate", ['p1' => [0, 0], 'p2' => [600, 0], 'meters' => 6])->assertOk();
+        $this->postJson("/plans/{$plan->id}/calibrate", ['points' => [[0, 0], [600, 0]], 'value' => 6])->assertOk();
 
         $this->assertEqualsWithDelta(0.01, $plan->fresh()->meters_per_px, 1e-9);
         $this->assertEquals([[0, 0], [6, 0], [6, 4], [0, 4]], $room->fresh()->polygon);
@@ -63,7 +63,7 @@ class FloorPlanTest extends TestCase
         $this->assertEquals([1.5, 1.0], [$asset->fresh()->x, $asset->fresh()->y]);
 
         // Поправили масштаб той же подложки: расставленное остается на своих местах картинки.
-        $this->postJson("/plans/{$plan->id}/calibrate", ['p1' => [0, 0], 'p2' => [6, 0], 'meters' => 6.2])->assertOk();
+        $this->postJson("/plans/{$plan->id}/calibrate", ['points' => [[0, 0], [6, 0]], 'value' => 6.2])->assertOk();
         $this->assertEquals([1.55, 1.033], [$asset->fresh()->x, $asset->fresh()->y]);
 
         // Замена подложки: метры остаются, новая картинка той же ширины в метрах.

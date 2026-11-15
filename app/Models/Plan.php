@@ -4,6 +4,7 @@ namespace App\Models;
 
 use App\Enums\PlanSource;
 use App\Models\Concerns\Auditable;
+use App\Services\Geometry;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
@@ -69,11 +70,19 @@ class Plan extends Model
         return [$dx * cos($a) + $dy * sin($a), -$dx * sin($a) + $dy * cos($a)];
     }
 
-    /** Масштаб по двум точкам картинки и расстоянию между ними в метрах. */
-    public function calibrate(array $p1, array $p2, float $meters): void
+    /**
+     * Масштаб по точкам картинки: две точки – отрезок длиной $value метров,
+     * три и больше – контур площадью $value м² (когда на чертеже нет размеров, только экспликация).
+     */
+    public function calibrate(array $points, float $value): void
     {
-        $px = hypot($p2[0] - $p1[0], $p2[1] - $p1[1]);
-        $this->meters_per_px = $meters / $px;
-        $this->calibration = ['p1' => $p1, 'p2' => $p2, 'meters' => $meters];
+        if (count($points) === 2) {
+            [$p1, $p2] = $points;
+            $this->meters_per_px = $value / hypot($p2[0] - $p1[0], $p2[1] - $p1[1]);
+            $this->calibration = ['p1' => $p1, 'p2' => $p2, 'meters' => $value];
+        } else {
+            $this->meters_per_px = sqrt($value / Geometry::area($points));
+            $this->calibration = ['polygon' => $points, 'area' => $value];
+        }
     }
 }
