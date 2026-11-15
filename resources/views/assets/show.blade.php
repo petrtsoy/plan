@@ -7,6 +7,8 @@
 <h1>{{ $asset->title }}</h1>
 <p class="muted small">{{ $asset->category->layer->name }} / {{ $asset->category->name }}</p>
 
+@include('inventories.asset-mark', ['check' => $check ?? null])
+
 <div class="grid">
     <div class="panel">
         <h2>Учет</h2>

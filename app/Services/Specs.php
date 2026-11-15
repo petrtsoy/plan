@@ -55,27 +55,33 @@ class Specs
     }
 
     /**
-     * Свойства с формы – в то, что лежит в rooms.specs: только известные ключи, каждое своим
-     * типом. Пустое значение не хранится вовсе: "не указано" у помещения check() считает
-     * нехваткой, а "нет" (false) – это ответ, его храним.
+     * Значения из формы (помещения или модели) в то, что лежит в JSON: только ключи каталога,
+     * каждый своим типом. Пустое поле не хранится: у модели это "не требуется", у помещения
+     * "не указано" (check() считает нехваткой).
+     *
+     * @param  bool  $keepNo  форма помещения отвечает еще и "нет" – явный ответ, храним его
+     *                        как false: в панели видно, что смотрели, а не забыли
      */
-    public static function sanitize(array $input): array
+    public static function values(array $input, bool $keepNo = false): array
     {
         $out = [];
         foreach (self::definitions() as $key => [, , $type, $unit]) {
             if (! array_key_exists($key, $input)) {
                 continue;
             }
-            $value = $input[$key];
-            if ($value === null || $value === '' || $value === []) {
+            $raw = $input[$key];
+            if ($raw === null || $raw === '' || $raw === []) {
                 continue;
             }
             $value = match ($type) {
-                'bool' => filter_var($value, FILTER_VALIDATE_BOOLEAN),
-                'number' => (float) str_replace(',', '.', (string) $value),
+                'bool' => filter_var($raw, FILTER_VALIDATE_BOOLEAN),
+                'number' => (float) str_replace(',', '.', (string) $raw),
                 // Для select в четвертом поле лежат варианты, а не единица измерения.
-                'select' => isset($unit[$value]) ? (string) $value : null,
+                'select' => isset($unit[$raw]) ? (string) $raw : null,
             };
+            if (($type === 'number' && $value <= 0) || ($value === false && ! $keepNo)) {
+                continue;
+            }
             if ($value !== null) {
                 $out[$key] = $value;
             }
@@ -95,6 +101,30 @@ class Specs
             'unit' => $d[2] === 'select' ? null : $d[3],
             'options' => $d[2] === 'select' ? $d[3] : null,
         ], array_keys(self::definitions()), self::definitions()));
+    }
+
+    /**
+     * Значения строками для карточек, отчетов и печати: "Мощность: 15 кВт", "Кислород".
+     *
+     * @return list<string>
+     */
+    public static function summary(array $values): array
+    {
+        $defs = self::definitions();
+        $out = [];
+        foreach ($values as $key => $value) {
+            if (! isset($defs[$key]) || $value === null || $value === false || $value === '') {
+                continue;
+            }
+            [, $label, $type, $unit] = $defs[$key];
+            $out[] = match ($type) {
+                'bool' => $label,
+                'number' => trim("{$label}: {$value} {$unit}"),
+                'select' => "{$label}: {$value}",
+            };
+        }
+
+        return $out;
     }
 
     /**

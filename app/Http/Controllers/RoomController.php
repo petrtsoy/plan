@@ -65,7 +65,7 @@ class RoomController extends Controller
         ]);
 
         if (array_key_exists('specs', $data)) {
-            $data['specs'] = Specs::sanitize((array) $data['specs']);
+            $data['specs'] = Specs::values((array) $data['specs'], keepNo: true);
         }
 
         return $data;

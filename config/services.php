@@ -65,6 +65,26 @@ return [
         'timeout' => (int) env('HR_TIMEOUT', 30),
     ],
 
+    // Справочник основных средств 1С (только чтение, пакет his/onec-odata – как в hr и supply).
+    // Адрес – корень публикации базы, без /odata/standard.odata/. Имена справочника и
+    // реквизитов – не здесь, а в config/onec.php.
+    'onec' => [
+        'base_url' => rtrim((string) env('ONEC_BASE_URL', ''), '/'),
+        'username' => env('ONEC_USERNAME'),
+        'password' => env('ONEC_PASSWORD'),
+        'timeout' => (int) env('ONEC_TIMEOUT', 60),
+    ],
+
+    // Обмен с it.his.kz: место ИТ-техники первично там (docs/it-exchange.md).
+    // api_key – которым plan обращается туда, incoming_key – которым it.his.kz присылает
+    // сюда события перемещений (POST /api/it/moves).
+    'it' => [
+        'base_url' => rtrim((string) env('IT_BASE_URL', 'https://it.his.kz'), '/'),
+        'api_key' => env('IT_API_KEY'),
+        'incoming_key' => env('IT_INCOMING_KEY'),
+        'timeout' => (int) env('IT_TIMEOUT', 30),
+    ],
+
     // Кому слать ежедневную сводку сигналов (через запятую) и за сколько дней предупреждать.
     'alerts' => [
         'emails' => array_values(array_filter(array_map('trim', explode(',', (string) env('PLAN_ALERT_EMAILS', ''))))),

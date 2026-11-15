@@ -27,6 +27,22 @@ class GeometryTest extends TestCase
         $this->assertEqualsWithDelta(0.3, $turned[0][0], 0.0001);
     }
 
+    public function test_within_and_overlaps_for_fit_checking(): void
+    {
+        // Г-образное помещение: аппарат целиком внутри, в вырезе – нет, даже если все углы внутри.
+        $room = [[0, 0], [4, 0], [4, 2], [2, 2], [2, 4], [0, 4]];
+        $this->assertTrue(Geometry::within([[0.5, 0.5], [1.5, 0.5], [1.5, 1.5], [0.5, 1.5]], $room));
+        $this->assertFalse(Geometry::within([[3, 1], [5, 1], [5, 1.5], [3, 1.5]], $room));
+        // Углы в помещении, а сторона проходит через вырез – не влезает.
+        $this->assertFalse(Geometry::within([[1, 3], [3, 1], [3.5, 1.5], [1.5, 3.5]], $room));
+
+        $box = Geometry::footprint(2, 2, 0, 1000, 600, ['front' => 500]);
+        $this->assertTrue(Geometry::overlaps($box, Geometry::footprint(2.5, 2, 0, 1000, 600)));
+        $this->assertFalse(Geometry::overlaps($box, Geometry::footprint(4, 2, 0, 1000, 600)));
+        // Один контур целиком внутри другого – тоже наложение.
+        $this->assertTrue(Geometry::overlaps($room, [[1, 1], [1.5, 1], [1.5, 1.5], [1, 1.5]]));
+    }
+
     public function test_plan_pixels_to_meters_and_back(): void
     {
         $plan = new Plan(['offset_x' => 10, 'offset_y' => 5, 'rotation' => 30]);
@@ -57,15 +73,18 @@ class GeometryTest extends TestCase
 
     public function test_specs_from_form(): void
     {
-        $clean = Specs::sanitize(['power_kw' => '15,5', 'power_380' => '1', 'water' => '0', 'ups' => '',
-            'clean_class' => 'B', 'floor_load' => 'не знаю', 'своё' => '1']);
+        $form = ['power_kw' => '15,5', 'power_380' => '1', 'water' => '0', 'ups' => '',
+            'clean_class' => 'B', 'floor_load' => 'не знаю', 'своё' => '1'];
+        $clean = Specs::values($form, keepNo: true);
 
         $this->assertSame(15.5, $clean['power_kw']);
         $this->assertTrue($clean['power_380']);
-        // "Нет" – ответ и хранится; "не указано" и ключи не из каталога не хранятся.
+        // "Нет" – ответ и хранится; "не указано", ноль и ключи не из каталога не хранятся.
         $this->assertFalse($clean['water']);
-        $this->assertSame(['power_kw', 'power_380', 'water', 'floor_load', 'clean_class'], array_keys($clean));
-        $this->assertSame(0.0, $clean['floor_load']);
+        $this->assertSame(['power_kw', 'power_380', 'water', 'clean_class'], array_keys($clean));
+        $this->assertSame(['Мощность: 15.5 кВт', 'Сеть 380 В', 'Класс чистоты: B'], Specs::summary($clean));
+        // У модели "нет" – это "не требуется", и в требованиях его не держим.
+        $this->assertArrayNotHasKey('water', Specs::values($form));
         $this->assertSame('Класс чистоты', collect(Specs::fields())->firstWhere('key', 'clean_class')['label']);
         $this->assertSame(['A' => 'A', 'B' => 'B', 'C' => 'C', 'D' => 'D'], collect(Specs::fields())->firstWhere('key', 'clean_class')['options']);
         $this->assertSame('кВт', collect(Specs::fields())->firstWhere('key', 'power_kw')['unit']);

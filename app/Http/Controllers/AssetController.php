@@ -12,6 +12,7 @@ use App\Models\Employee;
 use App\Models\Floor;
 use App\Services\AssetMover;
 use App\Services\FloorPlans;
+use App\Services\Inventories;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -22,7 +23,7 @@ use Illuminate\View\View;
 /** Единица учета: карточка и расстановка на плане (место меняет только AssetMover). */
 class AssetController extends Controller
 {
-    public function show(Request $request, Asset $asset): View
+    public function show(Request $request, Asset $asset, Inventories $inventories): View
     {
         $asset->load(['category.layer', 'model', 'office', 'floor.building', 'room', 'mol', 'employee', 'contractor',
             'maintenancePlans', 'maintenanceRecords', 'moves.toOffice', 'moves.toRoom', 'moves.user',
@@ -31,6 +32,8 @@ class AssetController extends Controller
 
         return view('assets.show', [
             'asset' => $asset,
+            // Скан QR ведет сюда же: если идет инвентаризация, в карточке отмечают "на месте".
+            'check' => $inventories->cardContext($asset),
             'canAssets' => $canAssets,
             'categories' => $canAssets ? Category::with('layer')->orderBy('layer_id')->orderBy('sort')->orderBy('name')->get() : collect(),
             'models' => $canAssets ? AssetModel::orderBy('name')->get(['id', 'name', 'manufacturer']) : collect(),
