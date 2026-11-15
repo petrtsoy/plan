@@ -40,9 +40,9 @@ Artisan::command('plan:mail-test {to}', function (string $to) {
     $this->info("Отправлено на {$to}");
 })->purpose('Тестовое письмо – проверить MAIL_* после выката');
 
-Artisan::command('plan:settings-import', function () {
-    $n = Settings::import();
+Artisan::command('plan:settings-import {--overwrite=* : ключ или раздел (sso, hr, mail), который взять из .env, даже если он уже задан}', function () {
+    $n = Settings::import($this->option('overwrite'));
     $this->info("Перенесено в БД из .env: {$n}");
-})->purpose('Переложить настройки из .env в БД (только те, что еще не заданы в разделе Настройки)');
+})->purpose('Переложить настройки из .env в БД (только непустые и еще не заданные в разделе Настройки)');
 
 Schedule::command('hr:sync')->dailyAt('05:30')->withoutOverlapping();

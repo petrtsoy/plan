@@ -30,6 +30,9 @@ class Settings
     // Логотип хранится в БД целиком, поэтому небольшой.
     public const LOGO_MAX_KB = 256;
 
+    /** Значения из .env до наложения БД: их переносит import(). */
+    private static array $env = [];
+
     /**
      * Каталог: ключ => [раздел, подпись, тип, путь в config, подсказка, доп.].
      * Типы: text, url, secret (шифруется, не показывается), bool, int, emails, select, image.
@@ -83,6 +86,9 @@ class Settings
             $value = self::fromStored($def[2], $rows[$key]);
             if ($def[2] === 'secret' && $rows[$key] !== null && $value === null) {
                 continue; // не расшифровался (сменили APP_KEY) – остается .env
+            }
+            if (! array_key_exists($key, self::$env)) {
+                self::$env[$key] = config($def[3]);
             }
             config([$def[3] => $value]);
         }
@@ -187,20 +193,29 @@ class Settings
         return count($changes);
     }
 
-    /** Переложить в БД то, что сейчас приходит из .env (для всех ключей без записи). */
-    public static function import(): int
+    /**
+     * Перенести в БД то, что задано в .env: ключа в БД нет или там пусто. Пустое в .env
+     * не переносится – иначе оно закроет значение, которое в .env впишут позже.
+     * $overwrite – ключи или разделы ("sso"), которые берутся из .env, даже если в БД уже есть.
+     */
+    public static function import(array $overwrite = []): int
     {
-        $stored = Setting::pluck('key')->flip();
+        $stored = Setting::pluck('value', 'key');
         $count = 0;
         foreach (self::definitions() as $key => $def) {
-            if ($stored->has($key)) {
+            $value = array_key_exists($key, self::$env) ? self::$env[$key] : config($def[3]);
+            if ($value === null || $value === false || $value === '' || $value === []) {
                 continue;
             }
-            Setting::create(['key' => $key, 'value' => self::toStored($def[2], config($def[3]))]);
+            $forced = in_array($key, $overwrite, true) || in_array($def[0], $overwrite, true);
+            if (! $forced && $stored->has($key) && ! in_array($stored[$key], [null, ''], true)) {
+                continue;
+            }
+            Setting::updateOrCreate(['key' => $key], ['value' => self::toStored($def[2], $value)]);
             $count++;
         }
         if ($count) {
-            Audit::log('setting', 0, 'created', ['перенесено из .env' => $count]);
+            Audit::log('setting', 0, 'updated', ['перенесено из .env' => $count]);
         }
         self::apply();
 

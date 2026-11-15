@@ -54,7 +54,9 @@ cd /var/www/plan && cp .env.example .env && chmod 600 .env
 | `MAIL_FROM_ADDRESS` | `noreply@hemcenter.kz` (его SPF разрешает этот сервер) |
 
 SSO, HR, почту и сигналы удобнее внести после первого входа в разделе "Настройки"
-(значения из БД главнее `.env`). Заданные в `.env` перенесет `php artisan plan:settings-import`.
+(значения из БД главнее `.env`). Заданные в `.env` перенесет `php artisan plan:settings-import`
+(его вызывает и `pull-plan`): только непустые и только туда, где в БД пусто. Раздел, уже
+заданный в БД, взять из `.env` заново – `php artisan plan:settings-import --overwrite=sso`.
 
 ## 4. Зависимости и база
 
