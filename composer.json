@@ -7,9 +7,15 @@
     "license": "MIT",
     "require": {
         "php": "^8.3",
+        "his/onec-odata": "^1.0",
         "laravel/framework": "^13.17",
         "laravel/tinker": "^3.0"
     },
+    "repositories": [{
+        "name": "onec",
+        "type": "vcs",
+        "url": "https://github.com/petrtsoy/onec-odata.git"
+    }],
     "require-dev": {
         "fakerphp/faker": "^1.23",
         "laravel/pail": "^1.2.5",

@@ -7,6 +7,7 @@ use App\Http\Controllers\Auth\SsoController;
 use App\Http\Controllers\BuildingController;
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\FloorController;
+use App\Http\Controllers\OnecController;
 use App\Http\Controllers\RoomController;
 use App\Http\Controllers\SettingsController;
 use Illuminate\Support\Facades\Route;
@@ -35,6 +36,8 @@ Route::middleware(['auth', 'role'])->group(function () {
     Route::get('/floors/{floor}', [FloorController::class, 'show'])->name('floors.show');
     Route::get('/plans/{plan}/image', [FloorController::class, 'planImage'])->name('plans.image');
     Route::get('/assets/{asset}', [AssetController::class, 'show'])->name('assets.show');
+    // Сверка с 1С: только чтение и показ расхождений, править ничего не дает.
+    Route::get('/onec', [OnecController::class, 'index'])->name('onec.index');
 
     Route::middleware('role:plans')->group(function () {
         Route::post('/buildings', [BuildingController::class, 'store'])->name('buildings.store');
@@ -56,6 +59,7 @@ Route::middleware(['auth', 'role'])->group(function () {
     Route::middleware('role:assets')->group(function () {
         Route::post('/floors/{floor}/assets', [AssetController::class, 'store'])->name('floors.assets.store');
         Route::post('/assets/{asset}/place', [AssetController::class, 'place'])->name('assets.place');
+        Route::put('/onec/offices', [OnecController::class, 'updateOffice'])->name('onec.offices.update');
     });
 
     Route::middleware('role:admin')->group(function () {
