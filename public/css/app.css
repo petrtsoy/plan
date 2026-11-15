@@ -416,7 +416,8 @@ main.wide { max-width: none; padding: 0; display: flex; }
 .dot { display: inline-block; width: 10px; height: 10px; border-radius: 50%; vertical-align: middle; }
 .legend { display: flex; flex-direction: column; gap: 2px; margin-top: 6px; }
 .due-overdue { background: #dc2626; } .due-soon { background: #f59e0b; } .due-ok { background: #16a34a; } .due-none { background: #94a3b8; }
-.pin { display: block; width: 16px; height: 16px; border-radius: 50%; border: 2px solid #fff; box-shadow: 0 0 0 1px rgba(15, 23, 42, .5), 0 1px 3px rgba(15, 23, 42, .4); }
+.pin { display: flex; align-items: center; justify-content: center; width: 22px; height: 22px; box-sizing: border-box; border-radius: 50%; border: 1.5px solid #fff; box-shadow: 0 0 0 1px rgba(15, 23, 42, .5), 0 1px 3px rgba(15, 23, 42, .4); }
+.pin svg { width: 14px; height: 14px; fill: none; stroke: #fff; stroke-width: 2.2; stroke-linecap: round; stroke-linejoin: round; }
 .pin-off { outline: 2px dashed #b91c1c; outline-offset: 1px; }
 .leaflet-tooltip.room-label { background: transparent; border: 0; box-shadow: none; color: var(--brand-700); font-weight: 600; font-size: 12px; padding: 0; }
 .leaflet-tooltip.room-label::before { display: none; }

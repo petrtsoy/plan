@@ -9,6 +9,61 @@
     var panel = document.getElementById('panel');
     var hint = document.getElementById('hint');
     var DUE = { overdue: '#dc2626', soon: '#f59e0b', ok: '#16a34a', none: '#94a3b8' };
+    // Значки единиц (контур 24 x 24, белым по цвету слоя); какой у единицы – решает App\Support\AssetIcons.
+    var ICONS = {
+        chair: 'M8 3v18M8 13h9v8',
+        armchair: 'M7 11V5h10v6M4 10v7h16v-7M7 14h10M6 17v3M18 17v3',
+        sofa: 'M5 10V6h14v4M3 10h18v6H3zM5 16v3M19 16v3',
+        table: 'M3 8h18M5 8v12M19 8v12',
+        drawers: 'M5 4h14v16H5zM5 12h14M10 8h4M10 16h4',
+        cabinet: 'M5 3h14v18H5zM12 3v18M10 11v2M14 11v2',
+        shelf: 'M5 3v18M19 3v18M5 8h14M5 13h14M5 18h14',
+        bed: 'M3 6v13M3 14h18v5M10 14v-4h8a3 3 0 0 1 3 3',
+        kitchen: 'M3 9h18M4 9v11h16V9M12 9v11M9 13v2M15 13v2M8 9l1-4h6l1 4',
+        fridge: 'M6 3h12v18H6zM6 10h12M9 6v2M9 13v3',
+        microwave: 'M3 6h18v12H3zM5 8h10v8H5zM18 9v1M18 13v1',
+        trolley: 'M4 6h16M4 12h16M6 6v10M18 6v10M7 19a1.5 1.5 0 1 1-3 0a1.5 1.5 0 1 1 3 0M20 19a1.5 1.5 0 1 1-3 0a1.5 1.5 0 1 1 3 0',
+        drip: 'M12 3v18M8 21h8M7 3h10M8 3v4a2 2 0 0 0 4 0',
+        screen: 'M3 4v16M9 4v16M15 4v16M21 4v16M3 4h18',
+        hanger: 'M12 4v17M8 21h8M8 7l4-3 4 3',
+        wheelchair: 'M10 3v.5M10 7v6h6l2 5M15 17a5 5 0 1 1-6-6',
+        optable: 'M3 10h18M12 10v8M8 21h8M12 18v3M6 7h4',
+        hood: 'M4 3h16v18H4zM4 13h16M7 6h10v4H7z',
+        safe: 'M4 4h16v15H4zM10 11.5a2 2 0 1 0 4 0a2 2 0 1 0-4 0M17 11.5h1M6 19v2M18 19v2',
+        laptop: 'M5 6h14v9H5zM2 18h20',
+        monitor: 'M3 4h18v12H3zM8 20h8M12 16v4',
+        heart: 'M3 4h18v12H3zM8 20h8M12 16v4M6 10h3l1.5-3 2 6 1.5-3H18',
+        printer: 'M7 9V3h10v6M7 17H4V9h16v8h-3M7 14h10v7H7z',
+        scanner: 'M3 13h18v6H3zM5 13l13-7M7 16h4',
+        network: 'M3 8h18v8H3zM7 12h1M11 12h1M15 12h3',
+        camera: 'M3 7h12v8H3zM15 10l6-3v8l-6-3M7 15l-2 5',
+        socket: 'M3 12a9 9 0 1 0 18 0a9 9 0 1 0-18 0M9 10v3M15 10v3',
+        extinguisher: 'M9 9h6v12H9zM10 9V6h4v3M12 6V3H9M14 4l4-1',
+        smoke: 'M3 8h18M5 8a7 7 0 0 0 14 0M12 12v1',
+        hydrant: 'M12 3v4M8 7h8M8 7v14h8V7M5 13h3M16 13h3',
+        exit: 'M4 5h16v14H4zM12 8l-4 4 4 4M8 12h9',
+        bolt: 'M13 2L5 14h6l-1 8 8-12h-6l1-8z',
+        gas: 'M12 8V3M9 3h6M6 14a6 6 0 1 0 12 0a6 6 0 1 0-12 0M12 11v3l2 2',
+        lungs: 'M12 3v8M12 10l-3 2M12 10l3 2M9 7c-3 0-5 4-5 9 0 2 2 3 5 2V7zM15 7c3 0 5 4 5 9 0 2-2 3-5 2V7z',
+        snow: 'M12 2v20M3.5 7l17 10M3.5 17l17-10',
+        thermo: 'M10 4a2 2 0 0 1 4 0v10a4 4 0 1 1-4 0zM12 9v6',
+        cross: 'M9 3h6v6h6v6h-6v6H9v-6H3V9h6z',
+        ultrasound: 'M8 3h8v6l-2 3h-4L8 9zM12 12v2M7 16a7 7 0 0 0 10 0M4 19a11 11 0 0 0 16 0',
+        xray: 'M4 4h16v16H4zM12 7v10M9 9h6M8 12h8M9 15h6',
+        ecg: 'M2 12h4l2-5 3 10 3-8 2 3h6',
+        sterilizer: 'M4 10h16v10H4zM8 7c0-2 2-2 2-4M14 7c0-2 2-2 2-4M8 15h8',
+        microscope: 'M9 3h4v8H9zM11 11v3M5 21h14M7 18h10M16 8a6 6 0 0 1-2 10',
+        centrifuge: 'M3 12a9 9 0 1 0 18 0a9 9 0 1 0-18 0M12 6v4M7 15l3-2M17 15l-3-2',
+        analyzer: 'M4 4h16v16H4zM4 10h16M8 14h3M8 17h6M15 7h2',
+        scale: 'M4 19h16M6 19l2-8h8l2 8M12 11V6M9 6h6',
+        flask: 'M9 3h6M10 3v6l-5 10a1.5 1.5 0 0 0 1.3 2h11.4a1.5 1.5 0 0 0 1.3-2l-5-10V3M7.5 15h9',
+        lamp: 'M12 3v5M5 14a7 6 0 0 1 14 0zM9 17h6',
+        pallet: 'M3 9h18M3 15h18M5 9v6M12 9v6M19 9v6',
+        board: 'M3 4h18v12H3zM8 20l4-4 4 4',
+        mirror: 'M6 11a6 8 0 1 0 12 0a6 8 0 1 0-12 0M12 19v2',
+        height: 'M8 3v18M8 3h4M8 7h3M8 11h4M8 15h3M8 19h4M16 6v1M16 9v8',
+        dot: 'M9 12a3 3 0 1 0 6 0a3 3 0 1 0-6 0'
+    };
 
     var map = L.map('map', { crs: L.CRS.Simple, minZoom: -12, maxZoom: 6, zoomSnap: 0.25, zoomDelta: 0.5, attributionControl: false, doubleClickZoom: false });
     var ll = function (x, y) { return L.latLng(-y, x); };
@@ -98,12 +153,13 @@
     function pinIcon(a) {
         var color = colorMode === 'due' ? DUE[a.due] : a.color;
         var cls = 'pin' + (a.status === 'repair' || a.status === 'idle' ? ' pin-off' : '');
-        return L.divIcon({ className: '', html: '<span class="' + cls + '" style="background:' + color + '"></span>', iconSize: [16, 16], iconAnchor: [8, 8] });
+        var svg = '<svg viewBox="0 0 24 24"><path d="' + (ICONS[a.icon] || ICONS.dot) + '"/></svg>';
+        return L.divIcon({ className: '', html: '<span class="' + cls + '" style="background:' + color + '">' + svg + '</span>', iconSize: [22, 22], iconAnchor: [11, 11] });
     }
     function drawAsset(a) {
         if (markers[a.id]) map.removeLayer(markers[a.id]);
         var m = L.marker(ll(a.x, a.y), { icon: pinIcon(a), draggable: F.canAssets, keyboard: false });
-        m.bindTooltip(esc(a.title) + (a.inv ? ' · ' + esc(a.inv) : ''), { direction: 'top', offset: [0, -8] });
+        m.bindTooltip(esc(a.title) + (a.inv ? ' · ' + esc(a.inv) : ''), { direction: 'top', offset: [0, -11] });
         m.on('click', function (e) { if (!tool) { L.DomEvent.stop(e); showAsset(a); } });
         m.on('dragend', function () {
             var to = xy(m.getLatLng());
@@ -154,6 +210,7 @@
         document.querySelectorAll('[data-tool]').forEach(function (b) { b.classList.toggle('primary', b.dataset.tool === name); });
         map.getContainer().classList.add('drawing');
         if (name === 'calibrate') say('Щелкните по двум концам отрезка, длина которого известна (стена, размерная линия). Если размеров нет – обведите помещение с известной площадью из экспликации. Esc – отмена.');
+        if (name === 'crop') say('Щелкните по двум противоположным углам рамки вокруг здания – останется только она. Esc – отмена.');
         if (name === 'room') say('Щелкайте по углам помещения. Закончить – щелчок по первой точке или двойной щелчок. Esc – отмена.');
         if (name === 'place') placeForm(opts);
     }
@@ -178,6 +235,10 @@
             drawPath('#b91c1c');
             if (points.length === 2) calibrateForm(false);
             else if (points.length > 2) { panel.innerHTML = ''; say('Обводите помещение дальше. Закончить – щелчок по первой точке или двойной щелчок.'); }
+        } else if (tool === 'crop') {
+            points.push(q);
+            L.circleMarker(e.latlng, { radius: 4, color: '#b91c1c' }).addTo(temp);
+            if (points.length === 2) cropForm();
         } else if (tool === 'room') {
             if (points.length >= 3 && nearFirst(e.latlng)) return finishRoom();
             points.push(q);
@@ -223,6 +284,23 @@
         document.getElementById('cal-ok').onclick = function () {
             send(F.urls.calibrate, 'POST', { points: points, value: parseFloat(input.value.replace(',', '.')) })
                 .then(function (res) { sessionToast(res.message); location.reload(); });
+        };
+    }
+
+    // Обрезка: рамка по двум углам
+    function cropForm() {
+        tool = 'crop-form';
+        hint.hidden = true;
+        L.rectangle(L.latLngBounds(ll(points[0][0], points[0][1]), ll(points[1][0], points[1][1])), { color: '#b91c1c', weight: 2, dashArray: '6 4', fillOpacity: 0.05 }).addTo(temp);
+        panel.innerHTML = '<div class="side-block"><strong>Обрезать чертеж</strong>' +
+            '<p class="small muted">Останется только рамка; PDF перерисуется крупнее. Расставленное останется на местах, прежний вариант сохранится.</p>' +
+            '<div class="actions"><button class="btn primary" id="crop-ok">Обрезать</button><button class="btn link" id="crop-no">Отмена</button></div></div>';
+        document.getElementById('crop-no').onclick = stopTool;
+        document.getElementById('crop-ok').onclick = function () {
+            this.disabled = true;
+            send(F.urls.crop, 'POST', { p1: points[0], p2: points[1] })
+                .then(function (res) { sessionToast(res.message); location.reload(); })
+                .catch(function () { document.getElementById('crop-ok').disabled = false; });
         };
     }
 

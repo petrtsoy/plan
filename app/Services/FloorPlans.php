@@ -100,35 +100,96 @@ class FloorPlans
             $plan->calibrate($px, $value);
             $plan->save();
 
-            if (! $first) {
-                return;
+            if ($first) {
+                $this->remapFloor($plan->floor_id, fn (float $x, float $y) => $plan->toMeters(...$old->toPixels($x, $y)));
             }
-            $map = fn (float $x, float $y) => array_map(fn ($v) => round($v, 3), $plan->toMeters(...$old->toPixels($x, $y)));
-            $floorId = $plan->floor_id;
-
-            Room::where('floor_id', $floorId)->whereNotNull('polygon')->each(function (Room $room) use ($map) {
-                $room->update(['polygon' => array_map(fn ($p) => $map($p[0], $p[1]), $room->polygon), 'area_m2' => null]);
-            });
-            Room::where('floor_id', $floorId)->whereNotNull('label_x')->each(function (Room $room) use ($map) {
-                [$x, $y] = $map((float) $room->label_x, (float) $room->label_y);
-                $room->update(['label_x' => $x, 'label_y' => $y]);
-            });
-            Zone::where('floor_id', $floorId)->each(function (Zone $zone) use ($map) {
-                $zone->update(['polygon' => array_map(fn ($p) => $map($p[0], $p[1]), $zone->polygon)]);
-            });
-            // Точка внутри того же помещения – это не перемещение, AssetMover не нужен.
-            Asset::where('floor_id', $floorId)->whereNotNull('x')->each(function (Asset $asset) use ($map) {
-                [$x, $y] = $map($asset->x, $asset->y);
-                $asset->forceFill(['x' => $x, 'y' => $y])->save();
-            });
-            LayoutItem::whereHas('layout', fn ($q) => $q->where('floor_id', $floorId))->each(function (LayoutItem $item) use ($map) {
-                [$x, $y] = $map($item->x, $item->y);
-                $item->update(['x' => $x, 'y' => $y]);
-            });
         });
     }
 
-    /** Помещение этажа, в котором точка (первое по номеру), или null – коридор, вне контуров. */
+    /**
+     * Обрезать подложку по рамке (две точки в координатах этажа): новая версия подложки, только
+     * кусок. PDF рендерится заново – кусок в полном разрешении; скан режется как есть.
+     * С масштабом расставленное не трогается (метры те же, меняются масштаб и сдвиг картинки);
+     * без масштаба координаты – пиксели картинки, поэтому пересчитываются на новую.
+     */
+    public function crop(Plan $plan, array $p1, array $p2): Plan
+    {
+        $a = $plan->toPixels(...$p1);
+        $b = $plan->toPixels(...$p2);
+        $W = $plan->width_px;
+        $H = $plan->height_px;
+        [$x0, $x1] = [max(0, min($a[0], $b[0])), min($W, max($a[0], $b[0]))];
+        [$y0, $y1] = [max(0, min($a[1], $b[1])), min($H, max($a[1], $b[1]))];
+        if ($x1 - $x0 < 50 || $y1 - $y0 < 50) {
+            throw ValidationException::withMessages(['p2' => 'Рамка слишком маленькая или вне чертежа.']);
+        }
+
+        // Рамка – в долях всего листа (у уже обрезанной подложки – внутри прошлой рамки).
+        $c = $plan->crop ?? ['x0' => 0, 'y0' => 0, 'x1' => 1, 'y1' => 1, 'aspect' => $W / $H];
+        $crop = [
+            'x0' => $c['x0'] + $x0 / $W * ($c['x1'] - $c['x0']), 'x1' => $c['x0'] + $x1 / $W * ($c['x1'] - $c['x0']),
+            'y0' => $c['y0'] + $y0 / $H * ($c['y1'] - $c['y0']), 'y1' => $c['y0'] + $y1 / $H * ($c['y1'] - $c['y0']),
+            'aspect' => $c['aspect'],
+        ];
+
+        $out = "plans/{$plan->floor_id}/".now()->format('Ymd-His').'-'.Str::lower(Str::random(6)).'-crop.png';
+        if ($plan->source === PlanSource::Pdf) {
+            $this->renderPdf($plan->source_path, $out, $plan->page, $crop);
+        } else {
+            $this->cropImage($plan->source_path, $out, $crop);
+        }
+        $size = @getimagesize(Storage::disk('local')->path($out));
+        if (! $size) {
+            throw ValidationException::withMessages(['p2' => 'Не удалось обрезать чертеж.']);
+        }
+        $f = $size[0] / ($x1 - $x0);
+
+        return DB::transaction(function () use ($plan, $out, $size, $crop, $f, $x0, $y0) {
+            $new = $plan->replicate(['is_current', 'calibration']);
+            $new->fill(['image_path' => $out, 'width_px' => $size[0], 'height_px' => $size[1], 'crop' => $crop,
+                'is_current' => true, 'user_id' => Auth::id(), 'calibration' => ['cropped_from' => $plan->id]]);
+            if ($plan->isCalibrated()) {
+                $new->meters_per_px = $plan->meters_per_px / $f;
+                [$new->offset_x, $new->offset_y] = $plan->toMeters($x0, $y0);
+            }
+            $plan->floor->plans()->update(['is_current' => false]);
+            $new->save();
+
+            if (! $plan->isCalibrated()) {
+                $this->remapFloor($plan->floor_id, fn (float $x, float $y) => $new->toMeters(
+                    ...array_map(fn ($v, $o) => ($v - $o) * $f, $plan->toPixels($x, $y), [$x0, $y0])));
+            }
+
+            return $new;
+        });
+    }
+
+    /** Все координаты этажа – через $mapper (метры или пиксели старой подложки -> новые). */
+    private function remapFloor(int $floorId, callable $mapper): void
+    {
+        $map = fn (float $x, float $y) => array_map(fn ($v) => round($v, 3), $mapper($x, $y));
+
+        Room::where('floor_id', $floorId)->whereNotNull('polygon')->each(function (Room $room) use ($map) {
+            $room->update(['polygon' => array_map(fn ($p) => $map($p[0], $p[1]), $room->polygon), 'area_m2' => null]);
+        });
+        Room::where('floor_id', $floorId)->whereNotNull('label_x')->each(function (Room $room) use ($map) {
+            [$x, $y] = $map((float) $room->label_x, (float) $room->label_y);
+            $room->update(['label_x' => $x, 'label_y' => $y]);
+        });
+        Zone::where('floor_id', $floorId)->each(function (Zone $zone) use ($map) {
+            $zone->update(['polygon' => array_map(fn ($p) => $map($p[0], $p[1]), $zone->polygon)]);
+        });
+        // Точка внутри того же помещения – это не перемещение, AssetMover не нужен.
+        Asset::where('floor_id', $floorId)->whereNotNull('x')->each(function (Asset $asset) use ($map) {
+            [$x, $y] = $map($asset->x, $asset->y);
+            $asset->forceFill(['x' => $x, 'y' => $y])->save();
+        });
+        LayoutItem::whereHas('layout', fn ($q) => $q->where('floor_id', $floorId))->each(function (LayoutItem $item) use ($map) {
+            [$x, $y] = $map($item->x, $item->y);
+            $item->update(['x' => $x, 'y' => $y]);
+        });
+    }
+
     /** Программа poppler-utils: из services.poppler.bin, иначе по имени из PATH. */
     public static function poppler(string $tool): string
     {
@@ -137,13 +198,32 @@ class FloorPlans
         return $dir !== '' ? $dir.DIRECTORY_SEPARATOR.$tool : $tool;
     }
 
+    /** Помещение этажа, в котором точка (первое по номеру), или null – коридор, вне контуров. */
     public function roomAt(Floor $floor, float $x, float $y): ?Room
     {
         return $floor->rooms()->whereNotNull('polygon')->get()
             ->first(fn (Room $room) => Geometry::contains($room->polygon, $x, $y));
     }
 
-    private function renderPdf(string $pdfPath, string $pngPath, int $page): string
+    /** Скан: вырезать рамку (доли картинки) из исходника. */
+    private function cropImage(string $srcPath, string $pngPath, array $crop): void
+    {
+        $disk = Storage::disk('local');
+        $img = @imagecreatefromstring($disk->get($srcPath));
+        if (! $img) {
+            throw ValidationException::withMessages(['p2' => 'Не удалось прочитать картинку.']);
+        }
+        $w = imagesx($img);
+        $h = imagesy($img);
+        $part = imagecrop($img, ['x' => (int) round($crop['x0'] * $w), 'y' => (int) round($crop['y0'] * $h),
+            'width' => (int) round(($crop['x1'] - $crop['x0']) * $w), 'height' => (int) round(($crop['y1'] - $crop['y0']) * $h)]);
+        imagedestroy($img);
+        imagepng($part, $disk->path($pngPath));
+        imagedestroy($part);
+    }
+
+    /** @param  ?array  $crop  рамка в долях листа: кусок рендерится так, чтобы его длинная сторона была PDF_MAX_PX */
+    private function renderPdf(string $pdfPath, string $pngPath, int $page, ?array $crop = null): string
     {
         $disk = Storage::disk('local');
         $out = substr($disk->path($pngPath), 0, -4);
@@ -154,8 +234,17 @@ class FloorPlans
             throw ValidationException::withMessages(['file' => 'Сервер занят другим чертежом, повторите через минуту.']);
         }
         try {
+            $args = ['-r', '150', '-scale-to', (string) self::PDF_MAX_PX];
+            if ($crop) {
+                // При -scale-to S длинная сторона листа – S пикселей; доли рамки – в пиксели такого листа.
+                [$wu, $hu] = $crop['aspect'] >= 1 ? [1, 1 / $crop['aspect']] : [$crop['aspect'], 1];
+                $scale = min(30000, self::PDF_MAX_PX / max(($crop['x1'] - $crop['x0']) * $wu, ($crop['y1'] - $crop['y0']) * $hu));
+                $args = ['-scale-to', (string) round($scale),
+                    '-x', (string) round($crop['x0'] * $wu * $scale), '-y', (string) round($crop['y0'] * $hu * $scale),
+                    '-W', (string) round(($crop['x1'] - $crop['x0']) * $wu * $scale), '-H', (string) round(($crop['y1'] - $crop['y0']) * $hu * $scale)];
+            }
             $process = new Process([self::poppler('pdftoppm'), '-png', '-singlefile', '-f', (string) $page, '-l', (string) $page,
-                '-r', '150', '-scale-to', (string) self::PDF_MAX_PX, $disk->path($pdfPath), $out]);
+                ...$args, $disk->path($pdfPath), $out]);
             $process->setTimeout(150);
             $process->run();
         } catch (\Throwable $e) {

@@ -33,6 +33,7 @@ class Plan extends Model
             'offset_y' => 'float',
             'rotation' => 'float',
             'calibration' => 'array',
+            'crop' => 'array',
             'is_current' => 'boolean',
         ];
     }

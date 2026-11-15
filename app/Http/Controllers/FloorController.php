@@ -11,6 +11,7 @@ use App\Models\Layer;
 use App\Models\Plan;
 use App\Services\AssetMover;
 use App\Services\FloorPlans;
+use App\Support\AssetIcons;
 use App\Services\ProjectImport;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
@@ -71,6 +72,7 @@ class FloorController extends Controller
                     : [],
                 'urls' => [
                     'calibrate' => $floor->plan ? route('plans.calibrate', $floor->plan) : null,
+                    'crop' => $floor->plan ? route('plans.crop', $floor->plan) : null,
                     'rooms' => route('floors.rooms.store', $floor),
                     'room' => route('rooms.update', ['room' => '__ID__']),
                     'assets' => route('floors.assets.store', $floor),
@@ -178,6 +180,18 @@ class FloorController extends Controller
         return $inLayer->first(fn ($c) => str_starts_with($c->name, 'Проч')) ?? $inLayer->first();
     }
 
+    public function crop(Request $request, Plan $plan, FloorPlans $plans): JsonResponse
+    {
+        $data = $request->validate([
+            'p1' => ['required', 'array', 'size:2'], 'p1.*' => ['numeric'],
+            'p2' => ['required', 'array', 'size:2'], 'p2.*' => ['numeric'],
+        ]);
+        abort_unless($plan->is_current, 422, 'Обрезать можно только текущую подложку.');
+        $plans->crop($plan, array_map('floatval', $data['p1']), array_map('floatval', $data['p2']));
+
+        return response()->json(['ok' => true, 'message' => 'Чертеж обрезан. Прежний вариант сохранен в истории подложек.']);
+    }
+
     /** Точка единицы для плана: цвет слоя и срок ТО (худший из действующих). */
     public static function assetPoint(Asset $a, int $days): array
     {
@@ -196,6 +210,7 @@ class FloorController extends Controller
             'x' => $a->x, 'y' => $a->y,
             'layer' => $a->category->layer_id,
             'color' => $a->category->display_color,
+            'icon' => AssetIcons::for($a),
             'category' => $a->category->name,
             'status' => $a->status->value,
             'statusLabel' => $a->status->label(),

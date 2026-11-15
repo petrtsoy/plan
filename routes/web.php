@@ -43,6 +43,7 @@ Route::middleware(['auth', 'role'])->group(function () {
         Route::put('/floors/{floor}', [FloorController::class, 'update'])->name('floors.update');
         Route::post('/floors/{floor}/plans', [FloorController::class, 'uploadPlan'])->name('floors.plans.store');
         Route::post('/plans/{plan}/calibrate', [FloorController::class, 'calibrate'])->name('plans.calibrate');
+        Route::post('/plans/{plan}/crop', [FloorController::class, 'crop'])->name('plans.crop');
         Route::post('/floors/{floor}/rooms', [RoomController::class, 'store'])->name('floors.rooms.store');
         Route::put('/rooms/{room}', [RoomController::class, 'update'])->name('rooms.update');
         Route::post('/floors/{floor}/import', [FloorController::class, 'import'])->name('floors.import');

@@ -79,7 +79,7 @@ class ProjectImport
         }
 
         return self::build($pages, $plan->page, $marksPage, $specPage, $plan->width_px, $plan->height_px,
-            fn (float $px, float $py) => $plan->toMeters($px, $py), $plan->isCalibrated());
+            fn (float $px, float $py) => $plan->toMeters($px, $py), $plan->isCalibrated(), $plan->crop);
     }
 
     /**
@@ -87,7 +87,7 @@ class ProjectImport
      *
      * @param  array<int, array>  $pages  номер листа => words()
      */
-    public static function build(array $pages, int $basePage, ?int $marksPage, ?int $specPage, int $imgW, int $imgH, callable $toFloor, bool $calibrated = true): array
+    public static function build(array $pages, int $basePage, ?int $marksPage, ?int $specPage, int $imgW, int $imgH, callable $toFloor, bool $calibrated = true, ?array $crop = null): array
     {
         $notes = [];
 
@@ -110,14 +110,19 @@ class ProjectImport
         $tableBoxes = fn (int $n) => array_merge(array_column($roomTables[$n] ?? [], 'box'),
             $n === $specPage ? array_column($itemTables, 'box') : []);
 
-        // Метки помещений на подложке: в пиксели картинки.
+        // Метки помещений на подложке: в пиксели картинки. Картинка – весь лист или рамка (crop, доли листа).
         $base = $pages[$basePage];
-        [$dispW, $dispH] = ($base['w'] > $base['h']) === ($imgW > $imgH) ? [$base['w'], $base['h']] : [$base['h'], $base['w']];
-        $scale = $dispW > 0 ? $imgW / $dispW : 1;
+        $crop ??= ['x0' => 0, 'y0' => 0, 'x1' => 1, 'y1' => 1, 'aspect' => $imgW / max($imgH, 1)];
+        [$dispW, $dispH] = ($base['w'] > $base['h']) === ($crop['aspect'] > 1) ? [$base['w'], $base['h']] : [$base['h'], $base['w']];
+        $scale = $dispW > 0 ? $imgW / ($dispW * ($crop['x1'] - $crop['x0'])) : 1;
+        $toPx = fn (array $p) => [($p[0] - $crop['x0'] * $dispW) * $scale, ($p[1] - $crop['y0'] * $dispH) * $scale];
         $baseAnchors = self::anchors($base['words'], $rooms, $tableBoxes($basePage));
         foreach ($rooms as $num => &$room) {
             $p = self::labelPoint($baseAnchors[$num] ?? []);
-            $room['label'] = $p ? array_map(fn ($v) => round($v, 3), $toFloor($p[0] * $scale, $p[1] * $scale)) : null;
+            $px = $p ? $toPx($p) : null;
+            // Метка вне рамки – помещение не на этом куске листа.
+            $room['label'] = $px && $px[0] >= 0 && $px[1] >= 0 && $px[0] <= $imgW && $px[1] <= $imgH
+                ? array_map(fn ($v) => round($v, 3), $toFloor(...$px)) : null;
         }
         unset($room);
         $missing = count(array_filter($rooms, fn ($r) => ! $r['label']));
@@ -177,7 +182,7 @@ class ProjectImport
                 // Одна метка в разных помещениях (стул в кабинете и в ординаторской) – строка ближайшего помещения.
                 $row = collect($byMark[$t])->sortBy(fn ($r) => self::nearest($c, array_column($marksAnchors[$r['room']] ?? [], 'p')))->first();
                 $q = [$fit['s'] * $c[0] + $fit['tx'], $fit['s'] * $c[1] + $fit['ty']];
-                $px = [$q[0] * $scale, $q[1] * $scale];
+                $px = $toPx($q);
                 if ($px[0] < 0 || $px[1] < 0 || $px[0] > $imgW || $px[1] > $imgH) {
                     continue;
                 }
