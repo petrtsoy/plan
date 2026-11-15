@@ -22,6 +22,7 @@
     $nav = array_filter([
         ['Главная', route('dashboard'), 'home', request()->routeIs('dashboard')],
         ['Здания и планы', route('buildings.index'), 'building', request()->routeIs('buildings.*', 'floors.*')],
+        $user->edits(\App\Enums\Area::Assets) ? ['ТО и поверка', route('maintenance.index'), 'scale', request()->routeIs('maintenance.*', 'contractors.*')] : null,
         $user->edits(\App\Enums\Area::Assets) ? ['Акты передачи', route('transfers.index'), 'book', request()->routeIs('transfers.*')] : null,
         ['Журнал', route('audit'), 'journal', request()->routeIs('audit')],
         $user->isAdmin() ? ['Что не ушло', route('admin.outbox'), 'signal', request()->routeIs('admin.outbox*')] : null,

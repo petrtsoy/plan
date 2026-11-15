@@ -3,9 +3,9 @@
 namespace App\Services;
 
 use App\Models\OutboxMessage;
-use App\Services\Outbox\Driver;
-use App\Services\Outbox\ItDriver;
-use App\Services\Outbox\OnecDriver;
+use App\Services\Outbox\ItSender;
+use App\Services\Outbox\OnecSender;
+use App\Services\Outbox\Sender;
 use Illuminate\Contracts\Container\Container;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Facades\Log;
@@ -22,7 +22,7 @@ use Illuminate\Support\Str;
 class OutboxSender
 {
     /** Драйвер на каждый target outbox. */
-    public const DRIVERS = ['onec' => OnecDriver::class, 'it' => ItDriver::class];
+    public const DRIVERS = ['onec' => OnecSender::class, 'it' => ItSender::class];
 
     /** Пауза перед повтором: 5 минут, дальше вдвое, но не больше 6 часов. */
     public const RETRY_MINUTES = 5;
@@ -136,7 +136,7 @@ class OutboxSender
         return (int) min(self::RETRY_MINUTES * 2 ** ($attempts - 1), self::RETRY_MAX_MINUTES);
     }
 
-    private function driver(string $target): ?Driver
+    private function driver(string $target): ?Sender
     {
         $class = self::DRIVERS[$target] ?? null;
 

@@ -6,8 +6,8 @@ use App\Enums\Role;
 use App\Models\AssetTransfer;
 use App\Models\OutboxMessage;
 use App\Models\User;
-use App\Services\Outbox\Driver;
-use App\Services\Outbox\OnecDriver;
+use App\Services\Outbox\OnecSender;
+use App\Services\Outbox\Sender;
 use App\Services\OutboxSender;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
@@ -30,9 +30,9 @@ class OutboxSendTest extends TestCase
     }
 
     /** Драйвер-заглушка: отправляет, падает или говорит, что не настроен. */
-    private function driver(bool $configured, ?\Throwable $fail = null, ?string $ref = null): Driver
+    private function driver(bool $configured, ?\Throwable $fail = null, ?string $ref = null): Sender
     {
-        return new class($configured, $fail, $ref) implements Driver
+        return new class($configured, $fail, $ref) implements Sender
         {
             public int $calls = 0;
 
@@ -60,9 +60,9 @@ class OutboxSendTest extends TestCase
         };
     }
 
-    private function using(Driver $driver): Driver
+    private function using(Sender $driver): Sender
     {
-        $this->app->bind(OnecDriver::class, fn () => $driver);
+        $this->app->bind(OnecSender::class, fn () => $driver);
 
         return $driver;
     }
@@ -86,6 +86,19 @@ class OutboxSendTest extends TestCase
 
         // И до срока сообщение больше не берется.
         $this->assertSame(0, OutboxMessage::ready()->count());
+    }
+
+    /** То же для it.his.kz: без адреса и ключа в настройках сообщение ждет, а не горит. */
+    public function test_unconfigured_it_target_waits_too(): void
+    {
+        config(['services.it.api_key' => null]);
+        $message = $this->message('it');
+
+        $this->assertSame('waiting', app(OutboxSender::class)->send($message));
+
+        $message->refresh();
+        $this->assertSame(0, $message->attempts);
+        $this->assertStringContainsString('it.his.kz не настроен', $message->error);
     }
 
     public function test_successful_send_marks_message_sent(): void

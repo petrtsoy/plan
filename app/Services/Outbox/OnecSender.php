@@ -10,7 +10,7 @@ use App\Models\OutboxMessage;
  * отдельная задача этапа 4. Поэтому configured() = false при любых настройках базы:
  * отправлять нечем, и OutboxSender не тратит на это попытки.
  */
-class OnecDriver implements Driver
+class OnecSender implements Sender
 {
     public function configured(): bool
     {

@@ -23,6 +23,7 @@ class Settings
         'brand' => 'Оформление',
         'sso' => 'Вход через auth.his.kz',
         'hr' => 'HR',
+        'it' => 'it.his.kz',
         'mail' => 'Почта',
         'alerts' => 'Сигналы',
     ];
@@ -54,6 +55,11 @@ class Settings
             'hr.base_url' => ['hr', 'Адрес HR', 'url', 'services.hr.base_url', null],
             'hr.api_key' => ['hr', 'Ключ API', 'secret', 'services.hr.api_key', 'Ключ потребителя с галочкой "it.his.kz: сотрудники и подразделения"'],
             'hr.timeout' => ['hr', 'Таймаут запроса, сек', 'int', 'services.hr.timeout', null, ['min' => 5, 'max' => 300]],
+
+            'it.base_url' => ['it', 'Адрес it.his.kz', 'url', 'services.it.base_url', null],
+            'it.api_key' => ['it', 'Ключ для отправки туда', 'secret', 'services.it.api_key', 'Им plan передает устройства в it.his.kz (заголовок X-Api-Key); берется в настройках it.his.kz'],
+            'it.incoming_key' => ['it', 'Ключ для it.his.kz: события перемещений', 'secret', 'services.it.incoming_key', 'Им it.his.kz присылает POST /api/it/moves (заголовок X-Api-Key). Пусто – прием выключен', ['generate' => true]],
+            'it.timeout' => ['it', 'Таймаут запроса, сек', 'int', 'services.it.timeout', null, ['min' => 5, 'max' => 300]],
 
             'mail.mailer' => ['mail', 'Отправка', 'select', 'mail.default', null, ['options' => ['smtp' => 'SMTP', 'log' => 'Только в лог (не отправлять)']]],
             'mail.host' => ['mail', 'SMTP-сервер', 'text', 'mail.mailers.smtp.host', 'На сервере – 127.0.0.1 (локальный Postfix)'],
