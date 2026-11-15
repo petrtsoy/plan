@@ -22,9 +22,14 @@
     $nav = array_filter([
         ['Главная', route('dashboard'), 'home', request()->routeIs('dashboard')],
         ['Здания и планы', route('buildings.index'), 'building', request()->routeIs('buildings.*', 'floors.*', 'layouts.*', 'layout-items.*')],
-        ['Проекты', route('projects.index'), 'squares', request()->routeIs('projects.*')],
+        ['Проекты', route('projects.index'), 'server', request()->routeIs('projects.*')],
         ['Модели', route('models.index'), 'beaker', request()->routeIs('models.*')],
+        $user->edits(\App\Enums\Area::Assets) ? ['ТО и поверка', route('maintenance.index'), 'scale', request()->routeIs('maintenance.*', 'contractors.*')] : null,
+        $user->edits(\App\Enums\Area::Assets) ? ['Акты передачи', route('transfers.index'), 'book', request()->routeIs('transfers.*')] : null,
+        ['Инвентаризация', route('inventories.index'), 'clipboard', request()->routeIs('inventories.*', 'labels')],
+        ['Сверка с 1С', route('onec.index'), 'squares', request()->routeIs('onec.*')],
         ['Журнал', route('audit'), 'journal', request()->routeIs('audit')],
+        $user->isAdmin() ? ['Что не ушло', route('admin.outbox'), 'signal', request()->routeIs('admin.outbox*')] : null,
         $user->isAdmin() ? ['Пользователи', route('admin.users'), 'shield', request()->routeIs('admin.users*')] : null,
         $user->isAdmin() ? ['Настройки', route('admin.settings'), 'cog', request()->routeIs('admin.settings*')] : null,
     ]);

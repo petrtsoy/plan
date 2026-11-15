@@ -5,6 +5,7 @@ namespace App\Services;
 use App\Models\Asset;
 use App\Models\AssetMove;
 use App\Models\AssetTransfer;
+use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
@@ -89,12 +90,28 @@ class Transfers
         });
     }
 
-    /** Открытые черновики пользователя – их показываем с кнопкой "Оформить". */
+    /**
+     * Открытые черновики для страницы актов – с кнопкой "Оформить": свои и те,
+     * что пришли из it.his.kz. Чужой акт не должен расти без ведома автора, поэтому
+     * черновики свои у каждого; у перемещений из it.his.kz автора здесь нет –
+     * их оформляет вручную тот, кто смотрит страницу (решение этапа 4).
+     */
     public function drafts(?int $userId = null)
     {
         return AssetTransfer::where('status', AssetTransfer::DRAFT)
-            ->where('user_id', $userId ?? Auth::id())
-            ->withCount('items')->latest('id')->get();
+            ->where(fn ($q) => $q->where('user_id', $userId ?? Auth::id())->orWhere('origin', 'it'))
+            ->with(['fromOffice', 'toOffice', 'fromMol', 'toMol', 'items.asset'])
+            ->latest('id')->get();
+    }
+
+    /** Оформленные акты – с состоянием отправки из outbox. */
+    public function issued(int $perPage = 25): LengthAwarePaginator
+    {
+        return AssetTransfer::where('status', AssetTransfer::ISSUED)
+            ->with(['fromOffice', 'toOffice', 'fromMol', 'toMol', 'user', 'outbox'])
+            ->withCount('items')
+            ->latest('issued_at')->latest('id')
+            ->paginate($perPage);
     }
 
     private function whereDirection($query, array $direction): void
