@@ -5,8 +5,11 @@ use App\Http\Controllers\AssetController;
 use App\Http\Controllers\Auth\LoginController;
 use App\Http\Controllers\Auth\SsoController;
 use App\Http\Controllers\BuildingController;
+use App\Http\Controllers\ContractorController;
 use App\Http\Controllers\DashboardController;
+use App\Http\Controllers\FileController;
 use App\Http\Controllers\FloorController;
+use App\Http\Controllers\MaintenanceController;
 use App\Http\Controllers\RoomController;
 use App\Http\Controllers\SettingsController;
 use Illuminate\Support\Facades\Route;
@@ -35,6 +38,8 @@ Route::middleware(['auth', 'role'])->group(function () {
     Route::get('/floors/{floor}', [FloorController::class, 'show'])->name('floors.show');
     Route::get('/plans/{plan}/image', [FloorController::class, 'planImage'])->name('plans.image');
     Route::get('/assets/{asset}', [AssetController::class, 'show'])->name('assets.show');
+    // Файлы к записям (акт ТО, свидетельство о поверке): только вошедшим.
+    Route::get('/files/{attachment}', [FileController::class, 'show'])->name('files.show');
 
     Route::middleware('role:plans')->group(function () {
         Route::post('/buildings', [BuildingController::class, 'store'])->name('buildings.store');
@@ -56,6 +61,18 @@ Route::middleware(['auth', 'role'])->group(function () {
     Route::middleware('role:assets')->group(function () {
         Route::post('/floors/{floor}/assets', [AssetController::class, 'store'])->name('floors.assets.store');
         Route::post('/assets/{asset}/place', [AssetController::class, 'place'])->name('assets.place');
+
+        // ТО и поверка: что пора обслуживать, регламент и выполнение, сервисные организации.
+        Route::get('/maintenance', [MaintenanceController::class, 'index'])->name('maintenance.index');
+        Route::get('/maintenance/records', [MaintenanceController::class, 'records'])->name('maintenance.records');
+        Route::get('/maintenance/assets/{asset}', [MaintenanceController::class, 'asset'])->name('maintenance.asset');
+        Route::post('/maintenance/assets/{asset}/plans', [MaintenanceController::class, 'storePlan'])->name('maintenance.plans.store');
+        Route::post('/maintenance/assets/{asset}/plans/from-model', [MaintenanceController::class, 'planFromModel'])->name('maintenance.plans.from-model');
+        Route::put('/maintenance/plans/{plan}', [MaintenanceController::class, 'updatePlan'])->name('maintenance.plans.update');
+        Route::post('/maintenance/assets/{asset}/records', [MaintenanceController::class, 'storeRecord'])->name('maintenance.records.store');
+        Route::get('/contractors', [ContractorController::class, 'index'])->name('contractors.index');
+        Route::post('/contractors', [ContractorController::class, 'store'])->name('contractors.store');
+        Route::put('/contractors/{contractor}', [ContractorController::class, 'update'])->name('contractors.update');
     });
 
     Route::middleware('role:admin')->group(function () {
