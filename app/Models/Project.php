@@ -44,6 +44,12 @@ class Project extends Model
         return $this->belongsTo(Building::class, 'chosen_building_id');
     }
 
+    /** Кто закрыл проект – в отчете для руководства. */
+    public function decidedBy(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'decided_by');
+    }
+
     public function needs(): HasMany
     {
         return $this->hasMany(ProjectNeed::class);

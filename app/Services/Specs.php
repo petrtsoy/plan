@@ -55,6 +55,56 @@ class Specs
     }
 
     /**
+     * Значения из формы (помещения или модели) в то, что лежит в JSON: снятые галочки,
+     * пустые числа и пустой выбор не хранятся – "не указано" и "нет" это одно и то же.
+     */
+    public static function values(array $input): array
+    {
+        $out = [];
+        foreach (self::definitions() as $key => [, , $type]) {
+            $raw = $input[$key] ?? null;
+            if ($raw === null || $raw === '' || $raw === false || $raw === '0') {
+                continue;
+            }
+            $value = match ($type) {
+                'bool' => true,
+                'number' => (float) str_replace(',', '.', (string) $raw),
+                'select' => (string) $raw,
+            };
+            if ($type === 'number' && $value <= 0) {
+                continue;
+            }
+            $out[$key] = $value;
+        }
+
+        return $out;
+    }
+
+    /**
+     * Значения строками для карточек, отчетов и печати: "Мощность: 15 кВт", "Кислород".
+     *
+     * @return list<string>
+     */
+    public static function summary(array $values): array
+    {
+        $defs = self::definitions();
+        $out = [];
+        foreach ($values as $key => $value) {
+            if (! isset($defs[$key]) || $value === null || $value === false || $value === '') {
+                continue;
+            }
+            [, $label, $type, $unit] = $defs[$key];
+            $out[] = match ($type) {
+                'bool' => $label,
+                'number' => trim("{$label}: {$value} {$unit}"),
+                'select' => "{$label}: {$value}",
+            };
+        }
+
+        return $out;
+    }
+
+    /**
      * Чего не хватает помещению для оборудования.
      *
      * @return list<string> пустой – подходит; неизвестное у помещения (нет значения) – тоже нехватка:

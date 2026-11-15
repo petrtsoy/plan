@@ -16,8 +16,19 @@
     </div>
 
     <aside class="floor-side">
-        <div class="crumbs"><a href="{{ route('buildings.index') }}">Здания</a> / <a href="{{ route('buildings.show', $floor->building) }}">{{ $floor->building->name }}</a></div>
+        <div class="crumbs">
+            @if($floor->building->is_candidate && $floor->building->project)
+                <a href="{{ route('projects.show', $floor->building->project) }}">{{ $floor->building->project->name }}</a> / {{ $floor->building->name }}
+            @else
+                <a href="{{ route('buildings.index') }}">Здания</a> / <a href="{{ route('buildings.show', $floor->building) }}">{{ $floor->building->name }}</a>
+            @endif
+        </div>
         <h1 class="floor-title">{{ $floor->name }}</h1>
+        @if($floor->building->is_candidate)
+            <p class="small"><span class="badge">здание проекта</span> Настоящих единиц здесь не бывает:
+                обведите помещения и задайте их свойства, а оборудование примеряйте
+                <a href="{{ route('floors.layouts.index', $floor) }}">вариантами расстановки</a>.</p>
+        @endif
         @if($floor->plan)
             <p class="small muted">
                 {{ $floor->plan->source->label() }}: {{ $floor->plan->source_name }}
@@ -36,6 +47,12 @@
         @endif
         <div class="hint" id="hint" hidden></div>
         <div id="panel"></div>
+
+        <section>
+            <h2>Примерка</h2>
+            <p class="small"><a href="{{ route('floors.layouts.index', $floor) }}">Варианты расстановки</a> –
+                примерить оборудование до покупки или переезда: влезает ли с сервисной зоной и хватает ли помещению.</p>
+        </section>
 
         <section>
             <h2>Слои</h2>

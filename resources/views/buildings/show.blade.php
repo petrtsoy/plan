@@ -7,7 +7,7 @@
 <p class="muted small">{{ $building->address }}@if($building->total_area_m2) · {{ $building->total_area_m2 }} м²@endif</p>
 
 <div class="table-wrap"><table>
-    <tr><th>Этаж</th><th>Чертеж</th><th>Помещений</th><th>Единиц на плане</th><th>Высота, м</th></tr>
+    <tr><th>Этаж</th><th>Чертеж</th><th>Помещений</th><th>Единиц на плане</th><th>Высота, м</th><th>Примерка</th></tr>
     @forelse($building->floors as $f)
         <tr>
             <td><a href="{{ route('floors.show', $f) }}">{{ $f->name }}</a> <span class="muted small">({{ $f->level }})</span></td>
@@ -19,9 +19,10 @@
             <td>{{ $f->rooms_count }}</td>
             <td>{{ $f->assets_count }}</td>
             <td>{{ $f->height_m }}</td>
+            <td><a href="{{ route('floors.layouts.index', $f) }}">варианты{{ $f->layouts_count ? ': '.$f->layouts_count : '' }}</a></td>
         </tr>
     @empty
-        <tr><td colspan="5" class="muted">Этажей пока нет.</td></tr>
+        <tr><td colspan="6" class="muted">Этажей пока нет.</td></tr>
     @endforelse
 </table></div>
 

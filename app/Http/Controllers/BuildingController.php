@@ -9,7 +9,11 @@ use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
 use Illuminate\View\View;
 
-/** Здания филиалов и их этажи. Кандидаты проектов здесь не показываются. */
+/**
+ * Здания филиалов и их этажи. В списках филиала кандидатов проектов нет (Office::buildings
+ * – через Building::real()); страница самого кандидата открывается из проекта: этажи,
+ * подложки и помещения ему нужны так же, настоящих единиц там просто не бывает.
+ */
 class BuildingController extends Controller
 {
     public function index(): View
@@ -31,15 +35,14 @@ class BuildingController extends Controller
 
     public function show(Building $building): View
     {
-        abort_if($building->is_candidate, 404);
-
-        $building->load(['office', 'floors' => fn ($q) => $q->with('plan')->withCount(['rooms', 'assets'])]);
+        $building->load(['office', 'floors' => fn ($q) => $q->with('plan')->withCount(['rooms', 'assets', 'layouts'])]);
 
         return view('buildings.show', ['building' => $building]);
     }
 
     public function update(Request $request, Building $building): RedirectResponse
     {
+        // Кандидата (у него может не быть филиала) правят на экране проекта.
         abort_if($building->is_candidate, 404);
         $building->update($this->validated($request));
 
@@ -48,7 +51,6 @@ class BuildingController extends Controller
 
     public function storeFloor(Request $request, Building $building): RedirectResponse
     {
-        abort_if($building->is_candidate, 404);
         $floor = $building->floors()->create($this->validatedFloor($request, $building));
 
         return redirect()->route('floors.show', $floor)->with('ok', 'Этаж добавлен. Загрузите чертеж.');

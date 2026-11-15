@@ -28,8 +28,7 @@ class FloorController extends Controller
 {
     public function show(Request $request, Floor $floor): View
     {
-        $floor->load(['building.office', 'plan', 'rooms']);
-        abort_if($floor->building->is_candidate, 404);
+        $floor->load(['building.office', 'building.project', 'plan', 'rooms']);
 
         $user = $request->user();
         $days = (int) config('services.alerts.maintenance_days');
@@ -39,7 +38,8 @@ class FloorController extends Controller
         return view('floors.show', [
             'floor' => $floor,
             'canPlans' => $user->edits(Area::Plans),
-            'canAssets' => $user->edits(Area::Assets),
+            // В здании проекта настоящих единиц не бывает – только позиции вариантов.
+            'canAssets' => $user->edits(Area::Assets) && ! $floor->building->is_candidate,
             'categories' => Category::with('layer')->orderBy('layer_id')->orderBy('sort')->orderBy('name')->get(),
             'map' => [
                 'plan' => $floor->plan ? [

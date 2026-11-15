@@ -4,7 +4,7 @@
 <h1>Журнал изменений</h1>
 
 @php
-    $types = ['asset' => 'Оборудование', 'transfer' => 'Акты передачи', 'maintenance' => 'ТО и поверка', 'maintenance_plan' => 'Регламент ТО', 'building' => 'Здания', 'floor' => 'Этажи', 'plan' => 'Подложки', 'room' => 'Помещения', 'zone' => 'Зоны', 'layer' => 'Слои', 'category' => 'Категории', 'asset_model' => 'Модели', 'contractor' => 'Сервисные организации', 'layout' => 'Варианты расстановки', 'inventory' => 'Инвентаризации', 'attachment' => 'Файлы', 'user' => 'Пользователи', 'auth' => 'Входы', 'hr_sync' => 'Синхронизация HR', 'setting' => 'Настройки'];
+    $types = ['asset' => 'Оборудование', 'transfer' => 'Акты передачи', 'maintenance' => 'ТО и поверка', 'maintenance_plan' => 'Регламент ТО', 'building' => 'Здания', 'floor' => 'Этажи', 'plan' => 'Подложки', 'room' => 'Помещения', 'zone' => 'Зоны', 'layer' => 'Слои', 'category' => 'Категории', 'asset_model' => 'Модели', 'contractor' => 'Сервисные организации', 'layout' => 'Варианты расстановки', 'project' => 'Проекты', 'inventory' => 'Инвентаризации', 'attachment' => 'Файлы', 'user' => 'Пользователи', 'auth' => 'Входы', 'hr_sync' => 'Синхронизация HR', 'setting' => 'Настройки'];
     $actions = ['created' => 'создано', 'updated' => 'изменено', 'deleted' => 'удалено', 'restored' => 'восстановлено', 'login' => 'вход', 'logout' => 'выход', 'login_denied' => 'отказ во входе', 'synced' => 'синхронизация'];
 @endphp
 

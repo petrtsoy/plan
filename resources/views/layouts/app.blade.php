@@ -21,7 +21,9 @@
     // Меню – как в supply: темная панель слева, активный пункт подсвечен фирменным цветом.
     $nav = array_filter([
         ['Главная', route('dashboard'), 'home', request()->routeIs('dashboard')],
-        ['Здания и планы', route('buildings.index'), 'building', request()->routeIs('buildings.*', 'floors.*')],
+        ['Здания и планы', route('buildings.index'), 'building', request()->routeIs('buildings.*', 'floors.*', 'layouts.*', 'layout-items.*')],
+        ['Проекты', route('projects.index'), 'squares', request()->routeIs('projects.*')],
+        ['Модели', route('models.index'), 'beaker', request()->routeIs('models.*')],
         ['Журнал', route('audit'), 'journal', request()->routeIs('audit')],
         $user->isAdmin() ? ['Пользователи', route('admin.users'), 'shield', request()->routeIs('admin.users*')] : null,
         $user->isAdmin() ? ['Настройки', route('admin.settings'), 'cog', request()->routeIs('admin.settings*')] : null,

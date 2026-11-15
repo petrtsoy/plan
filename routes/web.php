@@ -2,11 +2,14 @@
 
 use App\Http\Controllers\AdminController;
 use App\Http\Controllers\AssetController;
+use App\Http\Controllers\AssetModelController;
 use App\Http\Controllers\Auth\LoginController;
 use App\Http\Controllers\Auth\SsoController;
 use App\Http\Controllers\BuildingController;
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\FloorController;
+use App\Http\Controllers\LayoutController;
+use App\Http\Controllers\ProjectController;
 use App\Http\Controllers\RoomController;
 use App\Http\Controllers\SettingsController;
 use Illuminate\Support\Facades\Route;
@@ -36,6 +39,15 @@ Route::middleware(['auth', 'role'])->group(function () {
     Route::get('/plans/{plan}/image', [FloorController::class, 'planImage'])->name('plans.image');
     Route::get('/assets/{asset}', [AssetController::class, 'show'])->name('assets.show');
 
+    // Примерка и проекты: смотреть могут все, править – "Планы", утверждать – "Оборудование".
+    Route::get('/models', [AssetModelController::class, 'index'])->name('models.index');
+    Route::get('/floors/{floor}/layouts', [LayoutController::class, 'index'])->name('floors.layouts.index');
+    Route::get('/layouts/{layout}', [LayoutController::class, 'show'])->name('layouts.show');
+    Route::get('/layouts/{layout}/check', [LayoutController::class, 'check'])->name('layouts.check');
+    Route::get('/projects', [ProjectController::class, 'index'])->name('projects.index');
+    Route::get('/projects/{project}', [ProjectController::class, 'show'])->name('projects.show');
+    Route::get('/projects/{project}/report', [ProjectController::class, 'report'])->name('projects.report');
+
     Route::middleware('role:plans')->group(function () {
         Route::post('/buildings', [BuildingController::class, 'store'])->name('buildings.store');
         Route::put('/buildings/{building}', [BuildingController::class, 'update'])->name('buildings.update');
@@ -51,11 +63,36 @@ Route::middleware(['auth', 'role'])->group(function () {
         Route::post('/floors/{floor}/rooms', [RoomController::class, 'store'])->name('floors.rooms.store');
         Route::put('/rooms/{room}', [RoomController::class, 'update'])->name('rooms.update');
         Route::post('/floors/{floor}/import', [FloorController::class, 'import'])->name('floors.import');
+
+        // Варианты расстановки и проекты – там же, где здания и помещения.
+        Route::post('/floors/{floor}/layouts', [LayoutController::class, 'store'])->name('floors.layouts.store');
+        Route::put('/layouts/{layout}', [LayoutController::class, 'update'])->name('layouts.update');
+        Route::post('/layouts/{layout}/items', [LayoutController::class, 'storeItem'])->name('layouts.items.store');
+        Route::put('/layout-items/{item}', [LayoutController::class, 'updateItem'])->name('layout-items.update');
+        Route::delete('/layout-items/{item}', [LayoutController::class, 'destroyItem'])->name('layout-items.destroy');
+
+        Route::post('/projects', [ProjectController::class, 'store'])->name('projects.store');
+        Route::put('/projects/{project}', [ProjectController::class, 'update'])->name('projects.update');
+        Route::post('/projects/{project}/buildings', [ProjectController::class, 'storeCandidate'])->name('projects.candidates.store');
+        Route::put('/candidates/{building}', [ProjectController::class, 'updateCandidate'])->name('projects.candidates.update');
+        Route::post('/candidates/{building}/floors', [ProjectController::class, 'storeFloor'])->name('projects.candidates.floors.store');
+        Route::post('/projects/{project}/needs', [ProjectController::class, 'storeNeed'])->name('projects.needs.store');
+        Route::put('/needs/{need}', [ProjectController::class, 'updateNeed'])->name('projects.needs.update');
+        Route::delete('/needs/{need}', [ProjectController::class, 'destroyNeed'])->name('projects.needs.destroy');
+        Route::post('/projects/{project}/choose', [ProjectController::class, 'choose'])->name('projects.choose');
+        Route::post('/projects/{project}/reject', [ProjectController::class, 'reject'])->name('projects.reject');
     });
 
     Route::middleware('role:assets')->group(function () {
         Route::post('/floors/{floor}/assets', [AssetController::class, 'store'])->name('floors.assets.store');
         Route::post('/assets/{asset}/place', [AssetController::class, 'place'])->name('assets.place');
+
+        // Справочник моделей и утверждение варианта (заводит и переставляет единицы).
+        Route::get('/models/create', [AssetModelController::class, 'create'])->name('models.create');
+        Route::post('/models', [AssetModelController::class, 'store'])->name('models.store');
+        Route::get('/models/{model}/edit', [AssetModelController::class, 'edit'])->name('models.edit');
+        Route::put('/models/{model}', [AssetModelController::class, 'update'])->name('models.update');
+        Route::post('/layouts/{layout}/approve', [LayoutController::class, 'approve'])->name('layouts.approve');
     });
 
     Route::middleware('role:admin')->group(function () {

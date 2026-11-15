@@ -439,3 +439,53 @@ main.wide { max-width: none; padding: 0; display: flex; }
   .floor-map { min-height: 60vh; }
   .floor-side { width: auto; max-height: none; border-left: 0; border-top: 1px solid var(--line); }
 }
+
+/* --- Примерка, проекты и отчет (этап 5) --- */
+/* Требования модели и свойства помещения: разделы каталога Specs в колонки. */
+.specs { display: grid; gap: 16px; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); }
+.specs-group { border: 1px solid var(--line); border-radius: var(--radius-sm); padding: 10px 12px; }
+.specs-title { font-weight: 600; font-size: 12px; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); margin-bottom: 6px; }
+.specs-group .check { display: flex; gap: 6px; align-items: center; margin-top: 4px; }
+.specs-num { display: block; margin-top: 6px; font-size: 13px; }
+.specs-num input, .specs-num select { width: 100%; margin-top: 2px; }
+.filters { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-bottom: 16px; }
+
+/* Позиции варианта: список в панели и ручка перетаскивания на плане. */
+.items { display: flex; flex-direction: column; gap: 4px; }
+.li-row { border: 1px solid var(--line); border-radius: var(--radius-sm); padding: 8px 10px; cursor: pointer; }
+.li-row:hover { border-color: var(--slate-300); background: var(--slate-50); }
+.li-row.bad { border-left: 3px solid var(--bad); }
+.li-head { display: flex; gap: 6px; align-items: center; }
+.li-head strong { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.li-problems { margin: 4px 0 0; padding-left: 18px; color: var(--bad); }
+.li-handle { display: block; width: 14px; height: 14px; box-sizing: border-box; border-radius: 50%; border: 2px solid var(--brand-700); background: #fff; cursor: move; }
+.turns { display: flex; gap: 4px; margin-top: 6px; }
+.turns .btn { padding: 4px 8px; }
+
+/* Отчет по проекту: на экране – обычная страница, на печати – только он. */
+.report { background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); padding: 24px; }
+.report-head { border-bottom: 1px solid var(--line); padding-bottom: 12px; margin-bottom: 8px; }
+.report-head h1 { margin: 0 0 4px; }
+.report-sub { color: var(--muted); font-size: 13px; margin: 0 0 8px; }
+.report section { margin-top: 20px; }
+.report h2 { font-size: 17px; margin: 0 0 8px; }
+.report h3 { font-size: 14px; margin: 16px 0 6px; }
+.report ul { margin: 0 0 8px; padding-left: 22px; }
+.report-table { width: 100%; border-collapse: collapse; margin-bottom: 8px; font-size: 13px; }
+.report-table th, .report-table td { border: 1px solid var(--line); padding: 6px 10px; text-align: left; vertical-align: top; }
+.report-table thead th, .report-table tfoot th { background: var(--slate-50); }
+.report-sign { display: flex; gap: 32px; flex-wrap: wrap; margin-top: 32px; font-size: 13px; }
+
+@media print {
+  @page { margin: 15mm; }
+  body { background: #fff; }
+  .sidebar, .topbar, .sb-backdrop, .no-print, .toast, .errors { display: none !important; }
+  .shell, .content { display: block; }
+  main, main.wide { max-width: none; padding: 0; display: block; }
+  .report { border: 0; border-radius: 0; padding: 0; }
+  /* Раздел по зданию – с новой страницы, строки таблиц не разрываются. */
+  .report-building { break-before: page; }
+  .report-table, .report-sign, .report section > ul { break-inside: avoid; }
+  .report-table tr, .report h2, .report h3 { break-inside: avoid; break-after: avoid; }
+  a { color: inherit; text-decoration: none; }
+}

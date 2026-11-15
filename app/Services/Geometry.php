@@ -39,6 +39,78 @@ class Geometry
     }
 
     /**
+     * Контур целиком внутри другого: все углы внутри и ни одна сторона не пересекает границу
+     * (помещение бывает невыпуклым – одних углов мало: аппарат может "перешагнуть" выступ).
+     */
+    public static function within(array $inner, array $outer): bool
+    {
+        foreach ($inner as $p) {
+            if (! self::contains($outer, $p[0], $p[1])) {
+                return false;
+            }
+        }
+
+        return ! self::edgesCross($inner, $outer);
+    }
+
+    /** Контуры налезают друг на друга: стороны пересекаются или один внутри другого. */
+    public static function overlaps(array $a, array $b): bool
+    {
+        if (self::edgesCross($a, $b)) {
+            return true;
+        }
+
+        return self::contains($b, $a[0][0], $a[0][1]) || self::contains($a, $b[0][0], $b[0][1]);
+    }
+
+    /** Есть ли пересечение сторон двух контуров. */
+    private static function edgesCross(array $a, array $b): bool
+    {
+        $n = count($a);
+        $m = count($b);
+        for ($i = 0; $i < $n; $i++) {
+            for ($j = 0; $j < $m; $j++) {
+                if (self::segmentsCross($a[$i], $a[($i + 1) % $n], $b[$j], $b[($j + 1) % $m])) {
+                    return true;
+                }
+            }
+        }
+
+        return false;
+    }
+
+    /** Пересекаются ли отрезки p1p2 и p3p4 (касание в точке – тоже пересечение). */
+    private static function segmentsCross(array $p1, array $p2, array $p3, array $p4): bool
+    {
+        $d1 = self::cross($p3, $p4, $p1);
+        $d2 = self::cross($p3, $p4, $p2);
+        $d3 = self::cross($p1, $p2, $p3);
+        $d4 = self::cross($p1, $p2, $p4);
+
+        if ((($d1 > 0 && $d2 < 0) || ($d1 < 0 && $d2 > 0)) && (($d3 > 0 && $d4 < 0) || ($d3 < 0 && $d4 > 0))) {
+            return true;
+        }
+
+        // Отрезки на одной прямой: пересекаются, если точка лежит внутри другого отрезка.
+        return (abs($d1) < 1e-9 && self::onSegment($p3, $p4, $p1))
+            || (abs($d2) < 1e-9 && self::onSegment($p3, $p4, $p2))
+            || (abs($d3) < 1e-9 && self::onSegment($p1, $p2, $p3))
+            || (abs($d4) < 1e-9 && self::onSegment($p1, $p2, $p4));
+    }
+
+    /** С какой стороны от ab лежит точка c: больше нуля – слева, меньше – справа, ноль – на прямой. */
+    private static function cross(array $a, array $b, array $c): float
+    {
+        return ($b[0] - $a[0]) * ($c[1] - $a[1]) - ($b[1] - $a[1]) * ($c[0] - $a[0]);
+    }
+
+    private static function onSegment(array $a, array $b, array $p): bool
+    {
+        return $p[0] >= min($a[0], $b[0]) - 1e-9 && $p[0] <= max($a[0], $b[0]) + 1e-9
+            && $p[1] >= min($a[1], $b[1]) - 1e-9 && $p[1] <= max($a[1], $b[1]) + 1e-9;
+    }
+
+    /**
      * Прямоугольник, который занимает оборудование вместе с сервисными зонами:
      * углы в метрах этажа. Центр – точка установки, поворот – по часовой, перед смотрит вниз (+y).
      *
