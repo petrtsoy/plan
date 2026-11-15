@@ -1,11 +1,14 @@
 <?php
 
 use App\Enums\Role;
+use App\Mail\MaintenanceDigest;
 use App\Models\Office;
 use App\Models\User;
 use App\Services\AuthSync;
 use App\Services\HrSync;
+use App\Services\Maintenance;
 use App\Services\OnecSync;
+use App\Services\OutboxSender;
 use App\Services\Settings;
 use His\OnecOdata\OnecException;
 use Illuminate\Support\Facades\Artisan;
@@ -47,6 +50,42 @@ Artisan::command('plan:settings-import {--overwrite=* : ключ или разд
     $n = Settings::import($this->option('overwrite'));
     $this->info("Перенесено в БД из .env: {$n}");
 })->purpose('Переложить настройки из .env в БД (только непустые и еще не заданные в разделе Настройки)');
+
+Artisan::command('outbox:send {--limit= : сколько сообщений за раз}', function (OutboxSender $sender) {
+    $stats = $sender->run($this->option('limit') ? (int) $this->option('limit') : null);
+    $this->info(sprintf('Отправлено %d, повтор позже %d, не ушло совсем %d, ждет настройки %d',
+        $stats['sent'], $stats['retry'], $stats['failed'], $stats['waiting']));
+})->purpose('Отправить накопившееся в outbox в 1С и it.his.kz (с повторами)');
+
+Artisan::command('plan:maintenance-digest {--dry-run : Показать сводку, но не отправлять}', function (Maintenance $maintenance) {
+    $digest = $maintenance->digest();
+
+    $this->line(sprintf('Просрочено %d, срок в ближайшие %d дней – %d, гарантия %d, договоры %d',
+        $digest['overdue']->count(), $digest['days'], $digest['soon']->count(),
+        $digest['warranty']->count(), $digest['contracts']->count()));
+
+    // Пустую сводку не отправляем: письмо "все в порядке" каждое утро читать перестанут.
+    if (! $digest['total']) {
+        $this->info('Сигналов нет – письмо не отправляем.');
+
+        return;
+    }
+
+    $to = config('services.alerts.emails');
+    if (! $to) {
+        $this->warn('Некому отправлять: получатели – раздел "Настройки" → "Сигналы".');
+
+        return;
+    }
+    if ($this->option('dry-run')) {
+        $this->info('--dry-run: не отправлено. Получатели: '.implode(', ', $to));
+
+        return;
+    }
+
+    Mail::to($to)->send(new MaintenanceDigest($digest));
+    $this->info('Отправлено: '.implode(', ', $to));
+})->purpose('Ежедневная сводка: просроченные и близкие сроки ТО и поверки, гарантия, договоры');
 
 Schedule::command('hr:sync')->dailyAt('05:30')->withoutOverlapping();
 
@@ -124,4 +163,12 @@ Artisan::command('onec:probe {catalog? : сущность OData, по умолч
     return 0;
 })->purpose('Показать состав реквизитов справочника 1С – имена для config/onec.php');
 
-Schedule::command('onec:sync')->dailyAt('06:00')->withoutOverlapping();
+// После hr:sync и до сводки: филиалы для подразделений 1С уже свежие, а в сводке уже видно
+// то, что приехало из 1С.
+Schedule::command('onec:sync')->dailyAt('05:45')->withoutOverlapping();
+// Утром, после hr:sync: в сводке уже новые филиалы и сотрудники.
+Schedule::command('plan:maintenance-digest')->dailyAt('06:00')->withoutOverlapping();
+
+// Отправка в 1С и it.his.kz: сообщение ставится в транзакции с перемещением, отсюда уходит.
+// Повторы растут сами (OutboxSender), поэтому проверять очередь часто не дорого.
+Schedule::command('outbox:send')->everyFiveMinutes()->withoutOverlapping();

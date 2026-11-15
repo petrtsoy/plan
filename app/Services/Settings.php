@@ -24,6 +24,7 @@ class Settings
         'sso' => 'Вход через auth.his.kz',
         'hr' => 'HR',
         'onec' => '1С',
+        'it' => 'it.his.kz',
         'mail' => 'Почта',
         'alerts' => 'Сигналы',
     ];
@@ -60,6 +61,10 @@ class Settings
             'onec.username' => ['onec', 'Пользователь', 'text', 'services.onec.username', 'Отдельный пользователь 1С с правом только на чтение'],
             'onec.password' => ['onec', 'Пароль', 'secret', 'services.onec.password', null],
             'onec.timeout' => ['onec', 'Таймаут запроса, сек', 'int', 'services.onec.timeout', 'Обход справочника идет страницами, запас нужен', ['min' => 5, 'max' => 600]],
+            'it.base_url' => ['it', 'Адрес it.his.kz', 'url', 'services.it.base_url', null],
+            'it.api_key' => ['it', 'Ключ для отправки туда', 'secret', 'services.it.api_key', 'Им plan передает устройства в it.his.kz (заголовок X-Api-Key); берется в настройках it.his.kz'],
+            'it.incoming_key' => ['it', 'Ключ для it.his.kz: события перемещений', 'secret', 'services.it.incoming_key', 'Им it.his.kz присылает POST /api/it/moves (заголовок X-Api-Key). Пусто – прием выключен', ['generate' => true]],
+            'it.timeout' => ['it', 'Таймаут запроса, сек', 'int', 'services.it.timeout', null, ['min' => 5, 'max' => 300]],
 
             'mail.mailer' => ['mail', 'Отправка', 'select', 'mail.default', null, ['options' => ['smtp' => 'SMTP', 'log' => 'Только в лог (не отправлять)']]],
             'mail.host' => ['mail', 'SMTP-сервер', 'text', 'mail.mailers.smtp.host', 'На сервере – 127.0.0.1 (локальный Postfix)'],
