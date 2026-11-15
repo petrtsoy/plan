@@ -270,20 +270,54 @@ class FloorPlans
         return "plans/{$plan->floor_id}/clean/".substr(md5($plan->source_path), 0, 12)."-{$plan->page}";
     }
 
-    /** scripts/pdf_clean.py с аргументами; stdout или ошибка для пользователя. */
-    private function python(array $args): string
+    /**
+     * Подсказка контура помещения: щелчок внутри – контур по стенам картинки подложки
+     * (scripts/room_outline.py заливает помещение до линий и обводит залитое).
+     * Точка и ответ – в метрах этажа.
+     *
+     * @return list<array{0: float, 1: float}>
+     */
+    public function outline(Plan $plan, float $x, float $y): array
     {
-        $process = new Process([config('services.python.bin'), base_path('scripts/pdf_clean.py'), ...$args]);
+        $disk = Storage::disk('local');
+        if (! $plan->image_path || ! $disk->exists($plan->image_path)) {
+            throw ValidationException::withMessages(['x' => 'У этажа нет картинки подложки.']);
+        }
+        [$px, $py] = $plan->toPixels($x, $y);
+        if ($px < 0 || $py < 0 || $px > $plan->width_px || $py > $plan->height_px) {
+            throw ValidationException::withMessages(['x' => 'Щелкните внутри чертежа.']);
+        }
+
+        $out = $this->python(['outline', $disk->path($plan->image_path), (string) round($px, 1), (string) round($py, 1)],
+            'room_outline.py', 'x', 'Подсказка');
+        $result = json_decode($out, true) ?: [];
+
+        if (empty($result['polygon'])) {
+            throw ValidationException::withMessages(['x' => match ($result['error'] ?? '') {
+                'wall' => 'Это линия чертежа: щелкните внутри помещения, подальше от стен и подписей.',
+                'leak' => 'Заливка ушла за стены – похоже, щелкнули в проеме или в коридоре. Обведите по точкам.',
+                'tiny' => 'Слишком маленькая область: щелкните в середине помещения, не в штриховке.',
+                default => 'Не удалось обвести по стенам. Обведите контур по точкам.',
+            }]);
+        }
+
+        return array_map(fn ($p) => array_map(fn ($v) => round($v, 3), $plan->toMeters((float) $p[0], (float) $p[1])), $result['polygon']);
+    }
+
+    /** Скрипт из scripts/ с аргументами; stdout или ошибка для пользователя. */
+    private function python(array $args, string $script = 'pdf_clean.py', string $field = 'hide', string $what = 'Чистка'): string
+    {
+        $process = new Process([config('services.python.bin'), base_path("scripts/{$script}"), ...$args]);
         $process->setTimeout(120);
         try {
             $process->run();
         } catch (\Throwable $e) {
-            throw ValidationException::withMessages(['hide' => 'Чистка недоступна: '.$e->getMessage()]);
+            throw ValidationException::withMessages([$field => "{$what} недоступна: ".$e->getMessage()]);
         }
         if (! $process->isSuccessful()) {
             $err = trim($process->getErrorOutput());
             $why = str_contains($err, 'fitz') ? 'на сервере нет PyMuPDF (python3-fitz)' : (Str::afterLast($err, "\n") ?: 'python3 не найден');
-            throw ValidationException::withMessages(['hide' => "Чистка не удалась: {$why}"]);
+            throw ValidationException::withMessages([$field => "{$what} не удалась: {$why}"]);
         }
 
         return $process->getOutput();

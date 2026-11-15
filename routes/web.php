@@ -2,6 +2,7 @@
 
 use App\Http\Controllers\AdminController;
 use App\Http\Controllers\AssetController;
+use App\Http\Controllers\AttachmentController;
 use App\Http\Controllers\Auth\LoginController;
 use App\Http\Controllers\Auth\SsoController;
 use App\Http\Controllers\BuildingController;
@@ -9,6 +10,7 @@ use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\FloorController;
 use App\Http\Controllers\RoomController;
 use App\Http\Controllers\SettingsController;
+use App\Http\Controllers\ZoneController;
 use Illuminate\Support\Facades\Route;
 
 Route::middleware('guest')->group(function () {
@@ -35,6 +37,8 @@ Route::middleware(['auth', 'role'])->group(function () {
     Route::get('/floors/{floor}', [FloorController::class, 'show'])->name('floors.show');
     Route::get('/plans/{plan}/image', [FloorController::class, 'planImage'])->name('plans.image');
     Route::get('/assets/{asset}', [AssetController::class, 'show'])->name('assets.show');
+    // Файлы карточек: отдаются только вошедшим, лежат вне public.
+    Route::get('/files/{attachment}', [AttachmentController::class, 'show'])->name('files.show');
 
     Route::middleware('role:plans')->group(function () {
         Route::post('/buildings', [BuildingController::class, 'store'])->name('buildings.store');
@@ -48,14 +52,23 @@ Route::middleware(['auth', 'role'])->group(function () {
         Route::get('/plans/{plan}/clean/{index}.png', [FloorController::class, 'cleanPreview'])->whereNumber('index')->name('plans.clean.preview');
         Route::get('/plans/{plan}/clean/result.png', [FloorController::class, 'cleanResult'])->name('plans.clean.result');
         Route::post('/plans/{plan}/clean', [FloorController::class, 'clean']);
+        Route::post('/plans/{plan}/outline', [FloorController::class, 'outline'])->name('plans.outline');
         Route::post('/floors/{floor}/rooms', [RoomController::class, 'store'])->name('floors.rooms.store');
         Route::put('/rooms/{room}', [RoomController::class, 'update'])->name('rooms.update');
+        Route::post('/floors/{floor}/zones', [ZoneController::class, 'store'])->name('floors.zones.store');
+        Route::put('/zones/{zone}', [ZoneController::class, 'update'])->name('zones.update');
         Route::post('/floors/{floor}/import', [FloorController::class, 'import'])->name('floors.import');
     });
 
     Route::middleware('role:assets')->group(function () {
         Route::post('/floors/{floor}/assets', [AssetController::class, 'store'])->name('floors.assets.store');
         Route::post('/assets/{asset}/place', [AssetController::class, 'place'])->name('assets.place');
+        Route::post('/floors/{floor}/assets/place-many', [AssetController::class, 'placeMany'])->name('floors.assets.place-many');
+        Route::put('/assets/{asset}', [AssetController::class, 'update'])->name('assets.update');
+        Route::post('/assets/{asset}/assign', [AssetController::class, 'assign'])->name('assets.assign');
+        Route::post('/assets/{asset}/files', [AttachmentController::class, 'store'])->name('assets.files.store');
+        // Мягко: запись помечается, файл в storage остается.
+        Route::delete('/files/{attachment}', [AttachmentController::class, 'destroy'])->name('files.destroy');
     });
 
     Route::middleware('role:admin')->group(function () {

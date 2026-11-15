@@ -55,6 +55,49 @@ class Specs
     }
 
     /**
+     * Свойства с формы – в то, что лежит в rooms.specs: только известные ключи, каждое своим
+     * типом. Пустое значение не хранится вовсе: "не указано" у помещения check() считает
+     * нехваткой, а "нет" (false) – это ответ, его храним.
+     */
+    public static function sanitize(array $input): array
+    {
+        $out = [];
+        foreach (self::definitions() as $key => [, , $type, $unit]) {
+            if (! array_key_exists($key, $input)) {
+                continue;
+            }
+            $value = $input[$key];
+            if ($value === null || $value === '' || $value === []) {
+                continue;
+            }
+            $value = match ($type) {
+                'bool' => filter_var($value, FILTER_VALIDATE_BOOLEAN),
+                'number' => (float) str_replace(',', '.', (string) $value),
+                // Для select в четвертом поле лежат варианты, а не единица измерения.
+                'select' => isset($unit[$value]) ? (string) $value : null,
+            };
+            if ($value !== null) {
+                $out[$key] = $value;
+            }
+        }
+
+        return $out;
+    }
+
+    /** Свойства для формы и показа: ключ, раздел, подпись, тип, единица, варианты. */
+    public static function fields(): array
+    {
+        return array_values(array_map(fn ($key, $d) => [
+            'key' => $key,
+            'group' => $d[0],
+            'label' => $d[1],
+            'type' => $d[2],
+            'unit' => $d[2] === 'select' ? null : $d[3],
+            'options' => $d[2] === 'select' ? $d[3] : null,
+        ], array_keys(self::definitions()), self::definitions()));
+    }
+
+    /**
      * Чего не хватает помещению для оборудования.
      *
      * @return list<string> пустой – подходит; неизвестное у помещения (нет значения) – тоже нехватка:

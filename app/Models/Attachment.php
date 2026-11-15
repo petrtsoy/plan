@@ -4,12 +4,17 @@ namespace App\Models;
 
 use App\Models\Concerns\Auditable;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\MorphTo;
+use Illuminate\Database\Eloquent\SoftDeletes;
 
-/** Файл к записи (единица учета, запись ТО): в storage/app/private/attachments, отдается только вошедшим. */
+/**
+ * Файл к записи (единица учета, запись ТО): в storage/app/private/attachments, отдается
+ * только вошедшим. Убирают из карточки мягко (SoftDeletes) – файл на диске остается.
+ */
 class Attachment extends Model
 {
-    use Auditable;
+    use Auditable, SoftDeletes;
 
     public string $auditType = 'attachment';
 
@@ -30,6 +35,12 @@ class Attachment extends Model
     public function attachable(): MorphTo
     {
         return $this->morphTo();
+    }
+
+    /** Кто загрузил. */
+    public function user(): BelongsTo
+    {
+        return $this->belongsTo(User::class);
     }
 
     public function isImage(): bool

@@ -54,4 +54,20 @@ class GeometryTest extends TestCase
         $this->assertSame(['Кислород', 'Класс чистоты: нужен B, есть C'], $missing);
         $this->assertSame(['Мощность: нужно 3 кВт, есть 2'], Specs::check(['power_kw' => 3], ['power_kw' => 2]));
     }
+
+    public function test_specs_from_form(): void
+    {
+        $clean = Specs::sanitize(['power_kw' => '15,5', 'power_380' => '1', 'water' => '0', 'ups' => '',
+            'clean_class' => 'B', 'floor_load' => 'не знаю', 'своё' => '1']);
+
+        $this->assertSame(15.5, $clean['power_kw']);
+        $this->assertTrue($clean['power_380']);
+        // "Нет" – ответ и хранится; "не указано" и ключи не из каталога не хранятся.
+        $this->assertFalse($clean['water']);
+        $this->assertSame(['power_kw', 'power_380', 'water', 'floor_load', 'clean_class'], array_keys($clean));
+        $this->assertSame(0.0, $clean['floor_load']);
+        $this->assertSame('Класс чистоты', collect(Specs::fields())->firstWhere('key', 'clean_class')['label']);
+        $this->assertSame(['A' => 'A', 'B' => 'B', 'C' => 'C', 'D' => 'D'], collect(Specs::fields())->firstWhere('key', 'clean_class')['options']);
+        $this->assertSame('кВт', collect(Specs::fields())->firstWhere('key', 'power_kw')['unit']);
+    }
 }

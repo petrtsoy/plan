@@ -152,17 +152,38 @@
 
     function pinIcon(a) {
         var color = colorMode === 'due' ? DUE[a.due] : a.color;
-        var cls = 'pin' + (a.status === 'repair' || a.status === 'idle' ? ' pin-off' : '');
-        var svg = '<svg viewBox="0 0 24 24"><path d="' + (ICONS[a.icon] || ICONS.dot) + '"/></svg>';
+        var cls = 'pin' + (a.status === 'repair' || a.status === 'idle' ? ' pin-off' : '') + (selected[a.id] ? ' pin-sel' : '');
+        // Поворот – у значка, а не у кружка: кружок круглый, крутить его незачем.
+        var turn = a.rotation ? ' style="transform:rotate(' + a.rotation + 'deg)"' : '';
+        var svg = '<svg viewBox="0 0 24 24"' + turn + '><path d="' + (ICONS[a.icon] || ICONS.dot) + '"/></svg>';
         return L.divIcon({ className: '', html: '<span class="' + cls + '" style="background:' + color + '">' + svg + '</span>', iconSize: [22, 22], iconAnchor: [11, 11] });
     }
     function drawAsset(a) {
         if (markers[a.id]) map.removeLayer(markers[a.id]);
         var m = L.marker(ll(a.x, a.y), { icon: pinIcon(a), draggable: F.canAssets, keyboard: false });
         m.bindTooltip(esc(a.title) + (a.inv ? ' · ' + esc(a.inv) : ''), { direction: 'top', offset: [0, -11] });
-        m.on('click', function (e) { if (!tool) { L.DomEvent.stop(e); showAsset(a); } });
+        m.on('click', function (e) {
+            if (tool && tool !== 'select') return;
+            L.DomEvent.stop(e);
+            var ev = e.originalEvent;
+            if (tool === 'select' || ev.ctrlKey || ev.metaKey || ev.shiftKey) return toggleSelected(a);
+            showAsset(a);
+        });
+        // Выделенную точку тянут – едут все выделенные, взаимное расположение сохраняется.
+        var from = null;
+        m.on('dragstart', function () { from = [a.x, a.y]; });
+        m.on('drag', function () {
+            if (!selected[a.id] || !from || selectedList().length < 2) return;
+            var now = xy(m.getLatLng());
+            selectedList().forEach(function (b) {
+                if (b.id !== a.id && markers[b.id]) markers[b.id].setLatLng(ll(b.x + now[0] - from[0], b.y + now[1] - from[1]));
+            });
+        });
         m.on('dragend', function () {
             var to = xy(m.getLatLng());
+            if (selected[a.id] && selectedList().length > 1) {
+                return moveSelected(to[0] - a.x, to[1] - a.y, null).catch(showSelectedWhereThey);
+            }
             send(F.urls.place.replace('__ID__', a.id), 'POST', { floor_id: F.floorId, x: to[0], y: to[1] }).then(function (res) {
                 a.x = to[0]; a.y = to[1];
                 if (res.message) toast(res.message);
@@ -172,6 +193,81 @@
         markers[a.id] = m;
         if (!hiddenLayers[a.layer]) m.addTo(map);
     }
+
+    // --- Выделение нескольких единиц ---
+    var selected = {};
+    function selectedList() {
+        return Object.keys(selected).map(function (id) { return markers[id] && markers[id].asset; }).filter(Boolean);
+    }
+    function repaint(list) { list.forEach(function (a) { if (markers[a.id]) markers[a.id].setIcon(pinIcon(a)); }); }
+    function showSelectedWhereThey() { selectedList().forEach(function (a) { markers[a.id].setLatLng(ll(a.x, a.y)); }); }
+    function toggleSelected(a) {
+        if (selected[a.id]) delete selected[a.id]; else selected[a.id] = true;
+        repaint([a]);
+        selectionPanel();
+    }
+    function clearSelection() {
+        var was = selectedList();
+        selected = {};
+        repaint(was);
+    }
+    /** Перенести или повернуть выделенное разом (AssetMover::moveMany на сервере). */
+    function moveSelected(dx, dy, rotation) {
+        var list = selectedList();
+        if (!list.length) return Promise.resolve();
+        var body = { ids: list.map(function (a) { return a.id; }), dx: round(dx), dy: round(dy) };
+        if (rotation !== null && rotation !== undefined) body.rotation = rotation;
+        return send(F.urls.placeMany, 'POST', body).then(function (res) {
+            res.assets.forEach(drawAsset);
+            toast(res.message);
+            selectionPanel();
+        });
+    }
+    function selectionPanel() {
+        var list = selectedList();
+        if (!list.length) {
+            panel.innerHTML = '';
+            if (tool === 'select') say(SELECT_HINT);
+            return;
+        }
+        var names = list.slice(0, 6).map(function (a) { return a.title; }).join(', ');
+        panel.innerHTML = '<div class="side-block">' +
+            '<strong>Выбрано единиц: ' + list.length + '</strong>' +
+            '<p class="small muted">' + esc(names) + (list.length > 6 ? ' и еще ' + (list.length - 6) : '') + '</p>' +
+            (F.canAssets
+                ? '<p class="small muted">Перетащите любую выделенную точку – поедут все. Помещение у каждой определится по новому месту, смена помещения или филиала – с историей.</p>' +
+                  '<label>Повернуть все, °</label><input type="number" id="sel-rot" step="15" min="0" max="359" value="0">' +
+                  '<div class="actions"><button class="btn" id="sel-turn">Повернуть</button><button class="btn link" id="sel-no">Снять выделение</button></div>'
+                : '<div class="actions"><button class="btn link" id="sel-no">Снять выделение</button></div>') +
+            '</div>';
+        document.getElementById('sel-no').onclick = function () { clearSelection(); selectionPanel(); };
+        var turn = document.getElementById('sel-turn');
+        if (turn) turn.onclick = function () { moveSelected(0, 0, parseFloat(val('sel-rot').replace(',', '.')) || 0); };
+    }
+
+    // Рамка выделения: инструмент "Выделить" (на время него карту не тянем).
+    var SELECT_HINT = 'Обведите рамкой единицы на плане или щелкайте по ним. Ctrl и щелчок работают и без инструмента. Esc – снять.';
+    var band = null, bandFrom = null;
+    map.on('mousedown', function (e) {
+        if (tool !== 'select') return;
+        bandFrom = e.latlng;
+        band = L.rectangle(L.latLngBounds(e.latlng, e.latlng), { color: '#0f766e', weight: 1, dashArray: '4 4', fillOpacity: 0.08 }).addTo(temp);
+    });
+    map.on('mousemove', function (e) { if (band) band.setBounds(L.latLngBounds(bandFrom, e.latlng)); });
+    map.on('mouseup', function (e) {
+        if (!band) return;
+        var box = L.latLngBounds(bandFrom, e.latlng);
+        var size = map.latLngToContainerPoint(box.getNorthWest()).distanceTo(map.latLngToContainerPoint(box.getSouthEast()));
+        temp.clearLayers();
+        band = bandFrom = null;
+        if (size < 8) return;
+        Object.keys(markers).forEach(function (id) {
+            var a = markers[id].asset;
+            if (map.hasLayer(markers[id]) && box.contains(ll(a.x, a.y))) selected[a.id] = true;
+        });
+        repaint(selectedList());
+        selectionPanel();
+    });
     F.assets.forEach(drawAsset);
     function redrawAssets() { Object.keys(markers).forEach(function (id) { markers[id].setIcon(pinIcon(markers[id].asset)); }); }
 
@@ -212,6 +308,9 @@
         if (name === 'calibrate') say('Щелкните по двум концам отрезка, длина которого известна (стена, размерная линия). Если размеров нет – обведите помещение с известной площадью из экспликации. Esc – отмена.');
         if (name === 'crop') say('Щелкните по двум противоположным углам рамки вокруг здания – останется только она. Esc – отмена.');
         if (name === 'room') say('Щелкайте по углам помещения. Закончить – щелчок по первой точке или двойной щелчок. Esc – отмена.');
+        if (name === 'wand') say('Щелкните внутри помещения – контур обведется по стенам чертежа. Esc – отмена.');
+        if (name === 'zone') say('Щелкайте по углам зоны. Закончить – щелчок по первой точке или двойной щелчок. Esc – отмена.');
+        if (name === 'select') { map.dragging.disable(); say(SELECT_HINT); }
         if (name === 'place') placeForm(opts);
         if (name === 'clean') { map.getContainer().classList.add('cleaning'); cleanForm(); }
     }
@@ -220,6 +319,9 @@
         placing = false;
         points = [];
         temp.clearLayers();
+        band = bandFrom = null;
+        map.dragging.enable();
+        clearSelection();
         if (resultLayer) { map.removeLayer(resultLayer); resultLayer = null; }
         cleanPreview(null);
         hint.hidden = true;
@@ -246,12 +348,19 @@
             if (points.length >= 3 && nearFirst(e.latlng)) return finishRoom();
             points.push(q);
             drawPath('#0f766e');
+        } else if (tool === 'zone') {
+            if (points.length >= 3 && nearFirst(e.latlng)) return finishZone();
+            points.push(q);
+            drawPath('#7c3aed');
+        } else if (tool === 'wand') {
+            wandAt(q);
         } else if (tool === 'place' && placing) {
             placeAt(q);
         }
     });
     map.on('dblclick', function () {
         if (tool === 'room' && points.length >= 3) finishRoom();
+        if (tool === 'zone' && points.length >= 3) finishZone();
         if (tool === 'calibrate' && points.length >= 3) calibrateForm(true);
     });
     function nearFirst(latlng) {
@@ -409,15 +518,25 @@
     }
     function roomForm(r, save) {
         var edit = F.canPlans;
+        var off = edit ? '' : ' disabled';
+        var people = '<option value="">– не назначен –</option>' + (F.employees || []).map(function (e) {
+            return '<option value="' + e.id + '"' + (String(r.responsible_id || '') === String(e.id) ? ' selected' : '') + '>' + esc(e.name) + '</option>';
+        }).join('');
         panel.innerHTML = '<div class="side-block">' +
             '<strong>' + (r.id ? esc(r.title) : 'Новое помещение') + '</strong>' +
             (r.area ? '<p class="small muted">Площадь по контуру: ' + r.area.toFixed(2) + ' м²</p>' : '') +
-            '<label>Номер</label><input id="rm-number" value="' + esc(r.number || '') + '" ' + (edit ? '' : 'disabled') + '>' +
-            '<label>Название</label><input id="rm-name" value="' + esc(r.name || '') + '" placeholder="Процедурная" ' + (edit ? '' : 'disabled') + '>' +
-            '<label>Назначение</label><input id="rm-purpose" value="' + esc(r.purpose || '') + '" placeholder="лаборатория, склад, коридор" ' + (edit ? '' : 'disabled') + '>' +
-            '<label>Отделение</label><input id="rm-department" value="' + esc(r.department || '') + '" ' + (edit ? '' : 'disabled') + '>' +
+            '<label>Номер</label><input id="rm-number" value="' + esc(r.number || '') + '"' + off + '>' +
+            '<label>Название</label><input id="rm-name" value="' + esc(r.name || '') + '" placeholder="Процедурная"' + off + '>' +
+            '<label>Назначение</label><input id="rm-purpose" value="' + esc(r.purpose || '') + '" placeholder="лаборатория, склад, коридор"' + off + '>' +
+            '<label>Отделение</label><input id="rm-department" value="' + esc(r.department || '') + '"' + off + '>' +
+            '<label>Ответственный за помещение</label><select id="rm-responsible"' + off + '>' + people + '</select>' +
+            '<label>Кабинет в it.his.kz</label><input id="rm-it" type="number" min="1" value="' + esc(r.it_location_id || '') + '"' + off + '>' +
+            '<p class="small muted">Номер кабинета (locations.id) в it.his.kz: по нему ИТ-техника едет туда и приходит оттуда.</p>' +
+            '<label>Заметки</label><input id="rm-notes" value="' + esc(r.notes || '') + '"' + off + '>' +
+            specsBlock(r.specs || {}, edit) +
             (edit ? '<div class="actions"><button class="btn primary" id="rm-ok">Сохранить</button>' +
                 (r.id ? '<button class="btn" id="rm-shape">Обвести заново</button>' : '') +
+                (r.id && F.urls.outline ? '<button class="btn" id="rm-wand">По стенам</button>' : '') +
                 '<button class="btn link" id="rm-no">' + (r.id ? 'Закрыть' : 'Отмена') + '</button></div>' : '') +
             '</div>';
         if (!edit) return;
@@ -426,18 +545,196 @@
         document.getElementById('rm-ok').onclick = function () {
             save({
                 number: val('rm-number'), name: val('rm-name'), purpose: val('rm-purpose'),
-                department: val('rm-department'), polygon: r.polygon
+                department: val('rm-department'), notes: val('rm-notes'),
+                responsible_id: val('rm-responsible') || null,
+                it_location_id: val('rm-it') || null,
+                specs: specsValues(), polygon: r.polygon
             });
         };
         var sh = document.getElementById('rm-shape');
         if (sh) sh.onclick = function () { startTool('room'); reshape = r; say('Обведите помещение заново. Esc – отмена.'); };
+        var wand = document.getElementById('rm-wand');
+        if (wand) wand.onclick = function () { startTool('wand'); reshape = r; say('Щелкните внутри ' + r.title + ' – контур обведется по стенам чертежа. Esc – отмена.'); };
+    }
+    /** Инженерные свойства помещения по каталогу App\Services\Specs: "не указано" тоже ответ. */
+    function specsBlock(have, edit) {
+        var off = edit ? '' : ' disabled';
+        var groups = {};
+        (F.specs || []).forEach(function (s) { (groups[s.group] = groups[s.group] || []).push(s); });
+        var html = '';
+        Object.keys(F.specGroups || {}).forEach(function (code) {
+            if (!groups[code]) return;
+            html += '<div class="clean-kind">' + esc(F.specGroups[code]) + '</div>';
+            groups[code].forEach(function (s) {
+                var v = have[s.key];
+                if (s.type === 'bool') {
+                    html += '<label>' + esc(s.label) + '</label><select data-spec="' + s.key + '"' + off + '>' +
+                        '<option value="">не указано</option>' +
+                        '<option value="1"' + (v === true ? ' selected' : '') + '>есть</option>' +
+                        '<option value="0"' + (v === false ? ' selected' : '') + '>нет</option></select>';
+                } else if (s.type === 'select') {
+                    html += '<label>' + esc(s.label) + '</label><select data-spec="' + s.key + '"' + off + '>' +
+                        '<option value="">не указано</option>' +
+                        Object.keys(s.options).map(function (o) {
+                            return '<option value="' + esc(o) + '"' + (String(v || '') === o ? ' selected' : '') + '>' + esc(s.options[o]) + '</option>';
+                        }).join('') + '</select>';
+                } else {
+                    html += '<label>' + esc(s.label) + (s.unit ? ', ' + esc(s.unit) : '') + '</label>' +
+                        '<input type="number" step="0.01" min="0" data-spec="' + s.key + '" value="' + (v === undefined || v === null ? '' : v) + '"' + off + '>';
+                }
+            });
+        });
+        return html ? '<details class="side-block specs"><summary><strong>Инженерные свойства</strong></summary>' + html + '</details>' : '';
+    }
+    function specsValues() {
+        var out = {};
+        panel.querySelectorAll('[data-spec]').forEach(function (el) {
+            if (el.value !== '') out[el.dataset.spec] = el.value;
+        });
+        return out;
     }
     function showRoom(r) {
         stopTool();
         roomForm(r, function (data) {
             return send(F.urls.room.replace('__ID__', r.id), 'PUT', data).then(function (res) {
-                Object.assign(r, data, { area: res.area, title: ((data.number ? data.number + ' ' : '') + data.name).trim() });
+                Object.assign(r, data, { area: res.area, specs: res.specs, responsible: res.responsible, title: ((data.number ? data.number + ' ' : '') + data.name).trim() });
                 drawRoom(r); showRoom(r); toast(res.message);
+            });
+        });
+    }
+
+    /** Контур по стенам картинки: щелчок внутри помещения (scripts/room_outline.py на сервере). */
+    function wandAt(q) {
+        var forRoom = reshape;
+        say('Обвожу по стенам…');
+        send(F.urls.outline, 'POST', { x: q[0], y: q[1] }).then(function (res) {
+            if (tool !== 'wand') return;
+            points = res.polygon;
+            // Помещение из экспликации без контура, если метка попала внутрь, – ему и контур.
+            if (!forRoom) {
+                forRoom = (F.pending || []).filter(function (r) { return !r.polygon && inside(res.polygon, r.label[0], r.label[1]); })[0] || null;
+            }
+            reshape = forRoom;
+            if (!forRoom) {
+                tool = 'room';
+                return finishRoom();
+            }
+            // У готового помещения контур не затираем молча: сначала показываем, что вышло.
+            temp.clearLayers();
+            L.polygon(points.map(function (t) { return ll(t[0], t[1]); }), { color: '#0f766e', weight: 2, dashArray: '4 4', fillOpacity: 0.15 }).addTo(temp);
+            hint.hidden = true;
+            tool = 'wand-form';
+            var scaled = F.plan && F.plan.calibrated;
+            panel.innerHTML = '<div class="side-block"><strong>Контур для ' + esc(forRoom.title) + '</strong>' +
+                '<p class="small muted">' + (scaled
+                    ? 'По стенам вышло ' + res.area.toFixed(2).replace('.', ',') + ' м²' +
+                      (forRoom.area ? ', по проекту ' + forRoom.area.toFixed(2).replace('.', ',') + ' м²' : '') + '. '
+                    : 'Масштаб этажа не задан, поэтому площадь тут – в пикселях подложки. ') +
+                'Контур идет по внутренней стороне стен, поэтому он чуть меньше экспликации. ' +
+                'Если он ушел к соседям, на чертеже открыт дверной проем – обведите по точкам.</p>' +
+                '<div class="actions"><button class="btn primary" id="wd-ok">Сохранить контур</button>' +
+                '<button class="btn" id="wd-hand">Обвести по точкам</button>' +
+                '<button class="btn link" id="wd-no">Отмена</button></div></div>';
+            document.getElementById('wd-no').onclick = stopTool;
+            document.getElementById('wd-hand').onclick = function () { startTool('room'); reshape = forRoom; say('Обведите ' + forRoom.title + ' по точкам. Esc – отмена.'); };
+            document.getElementById('wd-ok').onclick = function () { tool = 'room'; finishRoom(); };
+        }).catch(function () { if (tool === 'wand') say('Щелкните внутри помещения, подальше от стен и подписей. Esc – отмена.'); });
+    }
+    /** Точка внутри контура (луч вправо) – как App\Services\Geometry::contains. */
+    function inside(polygon, x, y) {
+        var on = false;
+        for (var i = 0, j = polygon.length - 1; i < polygon.length; j = i++) {
+            var xi = polygon[i][0], yi = polygon[i][1], xj = polygon[j][0], yj = polygon[j][1];
+            if ((yi > y) !== (yj > y) && x < (xj - xi) * (y - yi) / (yj - yi) + xi) on = !on;
+        }
+        return on;
+    }
+
+    // --- Зоны: пожарный отсек, отдел, чистая зона – отдельным слоем поверх помещений ---
+    var zonesLayer = L.layerGroup(), zoneShapes = {}, zoneReshape = null;
+    if (zonesVisible()) zonesLayer.addTo(map);
+    function zonesVisible() {
+        var c = document.querySelector('[data-zones]');
+        return c ? c.checked : false;
+    }
+    function drawZone(z) {
+        if (zoneShapes[z.id]) zonesLayer.removeLayer(zoneShapes[z.id]);
+        var shape = L.polygon(z.polygon.map(function (q) { return ll(q[0], q[1]); }),
+            { color: z.color, weight: 2, dashArray: '6 4', fillColor: z.color, fillOpacity: 0.1 });
+        shape.bindTooltip(esc(z.name) + ' · ' + esc(z.kindLabel));
+        shape.on('click', function (e) { if (!tool) { L.DomEvent.stop(e); showZone(z); } });
+        shape.addTo(zonesLayer);
+        zoneShapes[z.id] = shape;
+    }
+    (F.zones || []).forEach(drawZone);
+    var zonesCheck = document.querySelector('[data-zones]');
+    if (zonesCheck) zonesCheck.onchange = function () {
+        if (this.checked) zonesLayer.addTo(map); else map.removeLayer(zonesLayer);
+    };
+
+    function finishZone() {
+        var poly = points.slice();
+        temp.clearLayers();
+        L.polygon(poly.map(function (t) { return ll(t[0], t[1]); }), { color: '#7c3aed', weight: 2, fillOpacity: 0.15 }).addTo(temp);
+        hint.hidden = true;
+        tool = 'zone-form';
+        if (zoneReshape) {
+            var z = zoneReshape;
+            zoneReshape = null;
+            return send(F.urls.zone.replace('__ID__', z.id), 'PUT', { polygon: poly }).then(function (res) {
+                stopTool(); drawZone(res.zone); showZone(res.zone); toast('Контур зоны сохранен.');
+            });
+        }
+        zoneForm({ polygon: poly, kind: 'department', color: '' }, function (data) {
+            return send(F.urls.zones, 'POST', data).then(function (res) {
+                stopTool(); drawZone(res.zone); toast(res.message);
+                if (zonesCheck && !zonesCheck.checked) { zonesCheck.checked = true; zonesLayer.addTo(map); }
+            });
+        });
+    }
+    function zoneForm(z, save) {
+        var edit = F.canPlans;
+        var off = edit ? '' : ' disabled';
+        var kinds = (F.zoneKinds || []).map(function (k) {
+            return '<option value="' + k.value + '"' + (z.kind === k.value ? ' selected' : '') + '>' + esc(k.label) + '</option>';
+        }).join('');
+        panel.innerHTML = '<div class="side-block">' +
+            '<strong>' + (z.id ? esc(z.name) : 'Новая зона') + '</strong>' +
+            (z.area ? '<p class="small muted">Площадь по контуру: ' + z.area.toFixed(2) + ' м²</p>' : '') +
+            '<label>Тип</label><select id="zn-kind"' + off + '>' + kinds + '</select>' +
+            '<label>Название</label><input id="zn-name" value="' + esc(z.name || '') + '" placeholder="Пожарный отсек 1"' + off + '>' +
+            '<label>Свой цвет</label><input id="zn-color" type="color" value="' + esc(z.color || colorOfKind(z.kind)) + '"' + off + '>' +
+            '<label class="check"><input type="checkbox" id="zn-own"' + (z.color ? ' checked' : '') + off + '> цвет свой, а не по типу</label>' +
+            '<label>Заметки</label><input id="zn-notes" value="' + esc(z.notes || '') + '"' + off + '>' +
+            (edit ? '<div class="actions"><button class="btn primary" id="zn-ok">Сохранить</button>' +
+                (z.id ? '<button class="btn" id="zn-shape">Обвести заново</button>' : '') +
+                '<button class="btn link" id="zn-no">' + (z.id ? 'Закрыть' : 'Отмена') + '</button></div>' : '') +
+            '</div>';
+        if (!edit) return;
+        document.getElementById('zn-name').focus();
+        document.getElementById('zn-no').onclick = stopTool;
+        document.getElementById('zn-kind').onchange = function () {
+            if (!document.getElementById('zn-own').checked) document.getElementById('zn-color').value = colorOfKind(this.value);
+        };
+        document.getElementById('zn-ok').onclick = function () {
+            save({
+                name: val('zn-name'), kind: val('zn-kind'), notes: val('zn-notes'),
+                color: document.getElementById('zn-own').checked ? val('zn-color') : null,
+                polygon: z.polygon
+            });
+        };
+        var sh = document.getElementById('zn-shape');
+        if (sh) sh.onclick = function () { startTool('zone'); zoneReshape = z; say('Обведите зону заново. Esc – отмена.'); };
+    }
+    function colorOfKind(kind) {
+        var found = (F.zoneKinds || []).filter(function (k) { return k.value === kind; })[0];
+        return found ? found.color : '#64748b';
+    }
+    function showZone(z) {
+        stopTool();
+        zoneForm(z, function (data) {
+            return send(F.urls.zone.replace('__ID__', z.id), 'PUT', data).then(function (res) {
+                drawZone(res.zone); showZone(res.zone); toast(res.message);
             });
         });
     }
@@ -450,10 +747,19 @@
             '<p class="small muted">' + esc(a.category) + (a.inv ? ' · инв. ' + esc(a.inv) : '') + '</p>' +
             '<p class="small">' + esc(a.statusLabel) + ' · ТО и поверка: ' +
             (a.next ? '<span class="dot" style="background:' + DUE[a.due] + '"></span> ' + a.next : 'нет регламента') + '</p>' +
-            '<div class="actions"><a class="btn" href="' + a.url + '">Карточка</a><button class="btn link" id="as-no">Закрыть</button></div>' +
-            (F.canAssets ? '<p class="small muted">Переставить – перетащите точку. В другое помещение – с записью в истории.</p>' : '') +
+            (F.canAssets ? '<label>Поворот, °</label><input type="number" id="as-rot" step="15" min="0" max="359" value="' + (a.rotation || 0) + '">' : '') +
+            '<div class="actions">' +
+            (F.canAssets ? '<button class="btn" id="as-turn">Повернуть</button>' : '') +
+            '<a class="btn" href="' + a.url + '">Карточка</a><button class="btn link" id="as-no">Закрыть</button></div>' +
+            (F.canAssets ? '<p class="small muted">Переставить – перетащите точку. В другое помещение – с записью в истории. Ctrl и щелчок – выделить несколько и перенести разом.</p>' : '') +
             '</div>';
         document.getElementById('as-no').onclick = stopTool;
+        var turn = document.getElementById('as-turn');
+        if (turn) turn.onclick = function () {
+            var deg = parseFloat(val('as-rot').replace(',', '.')) || 0;
+            send(F.urls.place.replace('__ID__', a.id), 'POST', { floor_id: F.floorId, x: a.x, y: a.y, rotation: deg })
+                .then(function (res) { drawAsset(res.asset); showAsset(res.asset); toast('Повернуто.'); });
+        };
     }
 
     var placing = null;

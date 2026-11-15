@@ -419,6 +419,9 @@ main.wide { max-width: none; padding: 0; display: flex; }
 .pin { display: flex; align-items: center; justify-content: center; width: 22px; height: 22px; box-sizing: border-box; border-radius: 50%; border: 1.5px solid #fff; box-shadow: 0 0 0 1px rgba(15, 23, 42, .5), 0 1px 3px rgba(15, 23, 42, .4); }
 .pin svg { width: 14px; height: 14px; fill: none; stroke: #fff; stroke-width: 2.2; stroke-linecap: round; stroke-linejoin: round; }
 .pin-off { outline: 2px dashed #b91c1c; outline-offset: 1px; }
+.pin-sel { box-shadow: 0 0 0 2px #0f766e, 0 0 0 4px rgba(15, 118, 110, .25); }
+.side-block.specs { border-style: dashed; }
+.side-block.specs label { margin-top: 6px; font-size: 13px; }
 .leaflet-tooltip.room-label { background: transparent; border: 0; box-shadow: none; color: var(--brand-700); font-weight: 600; font-size: 12px; padding: 0; }
 .leaflet-tooltip.room-label::before { display: none; }
 .room-pending span { display: inline-block; transform: translate(-50%, -50%); white-space: nowrap; padding: 1px 5px; border: 1px dashed var(--brand-700); border-radius: 9px; background: rgba(255, 255, 255, .85); color: var(--brand-700); font-size: 11px; font-weight: 600; cursor: pointer; }

@@ -31,7 +31,10 @@
                 @if($canPlans && $floor->plan?->source === \App\Enums\PlanSource::Pdf)<button type="button" class="btn" data-tool="clean" title="Скрыть размеры, оси, штриховку и прочее по типам линий">Очистить</button>@endif
                 @if($canPlans && $floor->plan)<button type="button" class="btn" data-tool="crop" title="Оставить от листа только здание: рамка по двум углам">Обрезать</button>@endif
                 @if($canPlans)<button type="button" class="btn" data-tool="room" title="Обвести контур по точкам">Помещение</button>@endif
+                @if($canPlans && $floor->plan)<button type="button" class="btn" data-tool="wand" title="Щелчок внутри помещения – контур по стенам чертежа">По стенам</button>@endif
+                @if($canPlans)<button type="button" class="btn" data-tool="zone" title="Пожарный отсек, отдел, чистая зона – поверх помещений">Зона</button>@endif
                 @if($canAssets)<button type="button" class="btn" data-tool="place" title="Поставить единицу на план">Поставить</button>@endif
+                @if($canAssets)<button type="button" class="btn" data-tool="select" title="Обвести рамкой несколько единиц и перенести или повернуть разом">Выделить</button>@endif
             </div>
         @endif
         <div class="hint" id="hint" hidden></div>
@@ -41,6 +44,7 @@
             <h2>Слои</h2>
             <div class="layer-list">
                 <label class="check"><input type="checkbox" data-rooms checked> Помещения</label>
+                <label class="check"><input type="checkbox" data-zones @checked($floor->zones->isNotEmpty())> Зоны</label>
                 @foreach($map['layers'] as $l)
                     <label class="check"><input type="checkbox" data-layer="{{ $l->id }}" @checked($l->visible)> <span class="dot" style="background:{{ $l->color }}"></span> {{ $l->name }}</label>
                 @endforeach
@@ -50,6 +54,13 @@
                 <label class="check"><input type="radio" name="color" value="layer" checked> по слою</label>
                 <label class="check"><input type="radio" name="color" value="due"> по сроку ТО и поверки</label>
             </div>
+            @if($floor->zones->isNotEmpty())
+                <div class="legend small muted">
+                    @foreach($floor->zones->groupBy(fn ($z) => $z->kind->value) as $zones)
+                        <span><span class="dot" style="background:{{ $zones->first()->display_color }}"></span> {{ $zones->first()->kind->label() }} – {{ $zones->count() }}</span>
+                    @endforeach
+                </div>
+            @endif
             <div class="legend small muted" id="legend-due" hidden>
                 <span><span class="dot due-overdue"></span> просрочено</span>
                 <span><span class="dot due-soon"></span> в ближайшие {{ config('services.alerts.maintenance_days') }} дн.</span>

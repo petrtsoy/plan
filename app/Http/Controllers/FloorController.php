@@ -4,14 +4,19 @@ namespace App\Http\Controllers;
 
 use App\Enums\Area;
 use App\Enums\AssetStatus;
+use App\Enums\ZoneKind;
 use App\Models\Asset;
 use App\Models\Category;
 use App\Models\Floor;
 use App\Models\Layer;
 use App\Models\Plan;
+use App\Models\Room;
+use App\Models\Zone;
 use App\Services\AssetMover;
 use App\Services\FloorPlans;
+use App\Services\Geometry;
 use App\Services\ProjectImport;
+use App\Services\Specs;
 use App\Support\AssetIcons;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
@@ -28,7 +33,7 @@ class FloorController extends Controller
 {
     public function show(Request $request, Floor $floor): View
     {
-        $floor->load(['building.office', 'plan', 'rooms']);
+        $floor->load(['building.office', 'plan', 'rooms.responsible', 'zones']);
         abort_if($floor->building->is_candidate, 404);
 
         $user = $request->user();
@@ -53,17 +58,17 @@ class FloorController extends Controller
                     'calibrated' => $floor->plan->isCalibrated(),
                 ] : null,
                 'layers' => Layer::orderBy('sort')->get(['id', 'name', 'color', 'visible']),
-                'rooms' => $floor->rooms->filter(fn ($r) => $r->polygon)->map(fn ($r) => [
-                    'id' => $r->id, 'number' => $r->number, 'name' => $r->name, 'title' => $r->title,
-                    'purpose' => $r->purpose, 'department' => $r->department,
-                    'area' => $r->area_m2 !== null ? (float) $r->area_m2 : null, 'polygon' => $r->polygon,
-                ])->values(),
+                'rooms' => $floor->rooms->filter(fn ($r) => $r->polygon)->map(fn ($r) => self::roomData($r) + ['polygon' => $r->polygon])->values(),
                 // Помещения из экспликации проекта без контура: метка "обведите меня".
-                'pending' => $floor->rooms->filter(fn ($r) => ! $r->polygon && $r->label_x !== null)->map(fn ($r) => [
-                    'id' => $r->id, 'number' => $r->number, 'name' => $r->name, 'title' => $r->title,
-                    'purpose' => $r->purpose, 'department' => $r->department,
-                    'area' => $r->area_m2 !== null ? (float) $r->area_m2 : null, 'label' => [$r->label_x, $r->label_y],
-                ])->values(),
+                'pending' => $floor->rooms->filter(fn ($r) => ! $r->polygon && $r->label_x !== null)
+                    ->map(fn ($r) => self::roomData($r) + ['label' => [$r->label_x, $r->label_y]])->values(),
+                'zones' => $floor->zones->map(fn (Zone $z) => self::zoneData($z))->values(),
+                'zoneKinds' => collect(ZoneKind::cases())->map(fn ($k) => ['value' => $k->value, 'label' => $k->label(), 'color' => Zone::colorFor($k)])->values(),
+                // Каталог инженерных свойств помещения (App\Services\Specs) для панели.
+                'specs' => Specs::fields(),
+                'specGroups' => Specs::GROUPS,
+                'employees' => $floor->building->office?->employees()->working()->orderBy('full_name')
+                    ->get(['employees.id', 'full_name'])->map(fn ($e) => ['id' => $e->id, 'name' => $e->full_name])->values() ?? [],
                 'assets' => $assets->map(fn (Asset $a) => $this->assetPoint($a, $days))->values(),
                 'unplaced' => $floor->building->office_id
                     ? Asset::where('office_id', $floor->building->office_id)->whereNull('floor_id')
@@ -74,10 +79,14 @@ class FloorController extends Controller
                     'calibrate' => $floor->plan ? route('plans.calibrate', $floor->plan) : null,
                     'crop' => $floor->plan ? route('plans.crop', $floor->plan) : null,
                     'clean' => $floor->plan ? route('plans.clean', $floor->plan) : null,
+                    'outline' => $floor->plan ? route('plans.outline', $floor->plan) : null,
                     'rooms' => route('floors.rooms.store', $floor),
                     'room' => route('rooms.update', ['room' => '__ID__']),
+                    'zones' => route('floors.zones.store', $floor),
+                    'zone' => route('zones.update', ['zone' => '__ID__']),
                     'assets' => route('floors.assets.store', $floor),
                     'place' => route('assets.place', ['asset' => '__ID__']),
+                    'placeMany' => route('floors.assets.place-many', $floor),
                     'import' => route('floors.import', $floor),
                 ],
             ],
@@ -193,6 +202,15 @@ class FloorController extends Controller
         return response()->json(['ok' => true, 'message' => 'Чертеж обрезан. Прежний вариант сохранен в истории подложек.']);
     }
 
+    /** Подсказка контура: щелчок внутри помещения – контур по стенам картинки подложки. */
+    public function outline(Request $request, Plan $plan, FloorPlans $plans): JsonResponse
+    {
+        $data = $request->validate(['x' => ['required', 'numeric'], 'y' => ['required', 'numeric']]);
+        $polygon = $plans->outline($plan, (float) $data['x'], (float) $data['y']);
+
+        return response()->json(['ok' => true, 'polygon' => $polygon, 'area' => round(Geometry::area($polygon), 2)]);
+    }
+
     public function cleanTypes(Plan $plan, FloorPlans $plans): JsonResponse
     {
         return response()->json(['types' => $plans->cleanTypes($plan)]);
@@ -219,6 +237,31 @@ class FloorController extends Controller
         return response()->json(['ok' => true, 'message' => 'Чертеж перерисован. Прежний вариант сохранен в истории подложек.']);
     }
 
+    /** Помещение для панели: что правится в ней же – номер, название, свойства, ответственный. */
+    public static function roomData(Room $room): array
+    {
+        return [
+            'id' => $room->id, 'number' => $room->number, 'name' => $room->name, 'title' => $room->title,
+            'purpose' => $room->purpose, 'department' => $room->department, 'notes' => $room->notes,
+            'area' => $room->area_m2 !== null ? (float) $room->area_m2 : null,
+            'specs' => (object) ($room->specs ?? []),
+            'responsible_id' => $room->responsible_id,
+            'responsible' => $room->responsible?->full_name,
+            'it_location_id' => $room->it_location_id,
+        ];
+    }
+
+    /** Зона для плана: отдельный слой поверх помещений. */
+    public static function zoneData(Zone $zone): array
+    {
+        return [
+            'id' => $zone->id, 'name' => $zone->name, 'kind' => $zone->kind->value,
+            'kindLabel' => $zone->kind->label(), 'color' => $zone->display_color,
+            'notes' => $zone->notes, 'polygon' => $zone->polygon,
+            'area' => round(Geometry::area($zone->polygon), 2),
+        ];
+    }
+
     /** Точка единицы для плана: цвет слоя и срок ТО (худший из действующих). */
     public static function assetPoint(Asset $a, int $days): array
     {
@@ -234,7 +277,7 @@ class FloorController extends Controller
             'id' => $a->id,
             'title' => $a->title,
             'inv' => $a->inventory_number,
-            'x' => $a->x, 'y' => $a->y,
+            'x' => $a->x, 'y' => $a->y, 'rotation' => (float) $a->rotation,
             'layer' => $a->category->layer_id,
             'color' => $a->category->display_color,
             'icon' => AssetIcons::for($a),

@@ -122,14 +122,16 @@ class AssetMover
      * по направлениям – обычно один акт, с разных МОЛ – по акту на МОЛ.
      *
      * @param  iterable<Asset>  $assets
+     * @param  array|callable  $to  одно место для всех или функция от единицы: выделенное
+     *                              на плане переносят со сдвигом, у каждой своя новая точка
      * @return list<AssetTransfer> затронутые черновики актов
      */
-    public function moveMany(iterable $assets, array $to, ?string $comment = null): array
+    public function moveMany(iterable $assets, array|callable $to, ?string $comment = null): array
     {
         return DB::transaction(function () use ($assets, $to, $comment) {
             $transfers = [];
             foreach ($assets as $asset) {
-                $move = $this->move($asset, $to, $comment);
+                $move = $this->move($asset, is_callable($to) ? $to($asset) : $to, $comment);
                 if ($move && ($t = $this->lastTransfer)) {
                     $transfers[$t->id] = $t;
                 }

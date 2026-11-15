@@ -106,6 +106,23 @@ class AssetMoverTest extends TestCase
         $this->assertSame(4, AssetTransfer::count());
     }
 
+    public function test_move_many_can_give_each_asset_its_own_place(): void
+    {
+        $room = $this->room();
+        $next = Room::create(['floor_id' => $room->floor_id, 'number' => '102', 'name' => 'Процедурная',
+            'polygon' => [[6, 0], [12, 0], [12, 4], [6, 4]]]);
+        $first = $this->asset($room);
+        $second = Asset::create($first->only(['category_id', 'office_id', 'room_id', 'floor_id']) + ['name' => 'Центрифуга', 'inventory_number' => 'INV-2', 'x' => 2, 'y' => 3]);
+
+        // Выделили на плане и перетащили: сдвиг один, точка у каждой своя.
+        app(AssetMover::class)->moveMany([$first, $second], fn (Asset $a) => ['room_id' => $next->id, 'x' => $a->x + 6, 'y' => $a->y]);
+
+        $this->assertSame([7.0, 1.0], [$first->fresh()->x, $first->fresh()->y]);
+        $this->assertSame([8.0, 3.0], [$second->fresh()->x, $second->fresh()->y]);
+        $this->assertSame([$next->id, $next->id], [$first->fresh()->room_id, $second->fresh()->room_id]);
+        $this->assertSame([1, 1], [$first->moves()->count(), $second->moves()->count()]);
+    }
+
     public function test_move_inside_branch_without_mol_change_has_no_act(): void
     {
         $room = $this->room();
