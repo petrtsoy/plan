@@ -439,3 +439,62 @@ main.wide { max-width: none; padding: 0; display: flex; }
   .floor-map { min-height: 60vh; }
   .floor-side { width: auto; max-height: none; border-left: 0; border-top: 1px solid var(--line); }
 }
+
+/* --- Инвентаризация: ведомость, экран помещения для телефона --- */
+.inv-marks { display: flex; gap: 6px; flex-wrap: wrap; }
+.inv-marks .btn { padding: 7px 12px; }
+.inv-where { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; margin-top: 6px; flex-basis: 100%; }
+.inv-where select { flex: 1 1 12rem; }
+/* Состояние строки видно цветом – так в длинной ведомости расхождения не теряются. */
+.inv-sheet tr[data-mark=misplaced] td { background: var(--warn-weak); }
+.inv-sheet tr[data-mark=missing] td { background: var(--bad-weak); }
+.inv-sheet tr[data-mark=surplus] td { background: var(--brand-50); }
+.inv-list { display: flex; flex-direction: column; gap: 8px; margin-bottom: 16px; }
+.inv-item { background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius-sm); padding: 12px; }
+.inv-item[data-mark=found] { border-color: #a7f3d0; }
+.inv-item[data-mark=misplaced] { border-color: #fcd34d; }
+.inv-item[data-mark=missing] { border-color: #fecaca; }
+.inv-item-head { display: flex; gap: 12px; justify-content: space-between; align-items: flex-start; margin-bottom: 10px; }
+.panel.inv-check { border-left: 4px solid var(--brand-600); }
+/* Телефон: кнопка отметки – во всю ширину, чтобы попадать одним касанием. */
+@media (max-width: 560px) {
+  .inv-marks { flex-direction: column; }
+  .inv-marks .btn { width: 100%; padding: 12px 16px; }
+}
+
+/* --- Этикетки: 63 x 33 мм, по 24 на лист A4 --- */
+.labels { display: grid; grid-template-columns: repeat(3, 63mm); margin-bottom: 16px; }
+.label { display: flex; gap: 2mm; align-items: center; width: 63mm; height: 33mm; padding: 2mm; box-sizing: border-box; border: 1px dashed var(--slate-300); overflow: hidden; break-inside: avoid; }
+.label-qr { width: 25mm; height: 25mm; flex: none; }
+.label-qr svg { display: block; width: 100%; height: 100%; }
+.label-text { min-width: 0; font-size: 8pt; line-height: 1.25; }
+.label-name { font-weight: 600; font-size: 9pt; max-height: 3.8em; overflow: hidden; }
+.label-num { font-size: 11pt; font-weight: 700; }
+.label-small { color: var(--slate-500); font-size: 7pt; }
+@media (max-width: 720px) { .labels { grid-template-columns: 63mm; } }
+
+/* --- Печать: ведомости и листы этикеток (кнопки, меню и фильтры не печатаем) --- */
+.print-doc { max-width: 1000px; }
+.print-title { font-size: 18px; text-align: center; margin: 0 0 8px; }
+.print-sub { text-align: center; color: var(--muted); margin: 0 0 20px; }
+.print-group { margin: 20px 0 6px; }
+.print-table { width: 100%; border-collapse: collapse; }
+.print-table th, .print-table td { border: 1px solid var(--line); padding: 5px 8px; font-size: 13px; }
+.print-sign { margin: 8px 0 0; }
+.print-signs { margin-top: 28px; }
+.print-signs p { margin: 0 0 14px; }
+@media print {
+  @page { size: A4; margin: 10mm; }
+  .sidebar, .topbar, .sb-backdrop, .no-print, .toast, .pager, .filters, .errors { display: none !important; }
+  body { background: #fff; color: #000; font-size: 11pt; }
+  .shell, .content { display: block; }
+  main { padding: 0; max-width: none; margin: 0; }
+  a { color: inherit; text-decoration: none; }
+  .panel, .table-wrap { border: 0; border-radius: 0; padding: 0; margin: 0 0 8px; }
+  .badge { background: none !important; color: inherit !important; border: 1px solid #999; }
+  thead { display: table-header-group; }
+  tr { break-inside: avoid; }
+  .print-title { font-size: 14pt; }
+  .print-sub, .label-small { color: #444; }
+  .label { border-color: #ddd; }
+}

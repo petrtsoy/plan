@@ -7,6 +7,8 @@ use App\Http\Controllers\Auth\SsoController;
 use App\Http\Controllers\BuildingController;
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\FloorController;
+use App\Http\Controllers\InventoryController;
+use App\Http\Controllers\LabelController;
 use App\Http\Controllers\RoomController;
 use App\Http\Controllers\SettingsController;
 use Illuminate\Support\Facades\Route;
@@ -35,6 +37,15 @@ Route::middleware(['auth', 'role'])->group(function () {
     Route::get('/floors/{floor}', [FloorController::class, 'show'])->name('floors.show');
     Route::get('/plans/{plan}/image', [FloorController::class, 'planImage'])->name('plans.image');
     Route::get('/assets/{asset}', [AssetController::class, 'show'])->name('assets.show');
+    // Скан QR с этикетки: та же карточка, но без id в ссылке.
+    Route::get('/a/{asset:qr_code}', [AssetController::class, 'show'])->name('assets.qr');
+
+    // Инвентаризация: смотреть ведомость могут все, отмечать – бухгалтер и инженер.
+    Route::get('/inventories', [InventoryController::class, 'index'])->name('inventories.index');
+    Route::get('/inventories/{inventory}', [InventoryController::class, 'show'])->name('inventories.show');
+    Route::get('/inventories/{inventory}/rooms/{room}', [InventoryController::class, 'room'])->name('inventories.room');
+    Route::get('/inventories/{inventory}/report', [InventoryController::class, 'report'])->name('inventories.report');
+    Route::get('/labels', [LabelController::class, 'index'])->name('labels');
 
     Route::middleware('role:plans')->group(function () {
         Route::post('/buildings', [BuildingController::class, 'store'])->name('buildings.store');
@@ -56,6 +67,13 @@ Route::middleware(['auth', 'role'])->group(function () {
     Route::middleware('role:assets')->group(function () {
         Route::post('/floors/{floor}/assets', [AssetController::class, 'store'])->name('floors.assets.store');
         Route::post('/assets/{asset}/place', [AssetController::class, 'place'])->name('assets.place');
+    });
+
+    Route::middleware('role:inventory')->group(function () {
+        Route::post('/inventories', [InventoryController::class, 'store'])->name('inventories.store');
+        Route::post('/inventories/{inventory}/items/{item}', [InventoryController::class, 'mark'])->name('inventories.mark');
+        Route::post('/inventories/{inventory}/check', [InventoryController::class, 'check'])->name('inventories.check');
+        Route::post('/inventories/{inventory}/close', [InventoryController::class, 'close'])->name('inventories.close');
     });
 
     Route::middleware('role:admin')->group(function () {
