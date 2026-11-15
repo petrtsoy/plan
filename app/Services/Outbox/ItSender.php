@@ -7,6 +7,7 @@ use App\Models\Employee;
 use App\Models\Office;
 use App\Models\OutboxMessage;
 use App\Models\Room;
+use App\Services\Audit;
 use Illuminate\Support\Facades\Http;
 use RuntimeException;
 
@@ -59,15 +60,27 @@ class ItSender implements Sender
 
         $data = $this->post('/api/plan/moves', $body);
 
-        // it.his.kz нашел устройство по инвентарному номеру – запоминаем связку.
         $subject = $message->subject;
-        if (! empty($data['device_id']) && $subject instanceof AssetMove) {
-            $asset = $subject->asset;
-            if ($asset && ! $asset->it_device_id) {
-                $asset->update(['it_device_id' => (int) $data['device_id']]);
-            }
+        $asset = $subject instanceof AssetMove ? $subject->asset : null;
+
+        // it.his.kz нашел устройство по инвентарному номеру – запоминаем связку.
+        if (! empty($data['device_id']) && $asset && ! $asset->it_device_id) {
+            $asset->update(['it_device_id' => (int) $data['device_id']]);
         }
 
+        // Приняли не полностью (кабинет или сотрудник там не нашлись) – в журнал:
+        // это сигнал поправить связку помещения или догнать hr:sync.
+        $warnings = array_values(array_filter((array) ($data['warnings'] ?? [])));
+        if ($warnings) {
+            Audit::log('it_exchange', $asset?->id ?? 0, 'move_sent', [
+                'warnings' => $warnings,
+                'it_move_id' => $data['move_id'] ?? null,
+                'location_id' => $body['location_id'],
+                'employee_hr_id' => $body['employee_hr_id'],
+            ], 'it.his.kz принял перемещение с замечаниями');
+        }
+
+        // move_id может не прийти: перестановку в то же место it.his.kz в историю не пишет.
         return isset($data['move_id']) ? (string) $data['move_id'] : null;
     }
 
@@ -86,7 +99,13 @@ class ItSender implements Sender
 
         if ($response->failed()) {
             $error = $response->json('error') ?? $response->json('message') ?? mb_substr($response->body(), 0, 300);
-            throw new RuntimeException("it.his.kz ответил {$response->status()}: {$error}");
+            $text = "it.his.kz ответил {$response->status()}: {$error}";
+            // Устройства там нет (404) или тело не прошло проверку (422 с errors) – повторы
+            // не помогут. А вот незаведенный филиал (422 office_not_found), перегрузка и
+            // 5xx проходят сами: после hr:sync в it.his.kz сообщение уйдет.
+            $rejected = $response->status() === 404 || ($response->status() === 422 && $response->json('errors'));
+
+            throw $rejected ? new Rejected($text) : new RuntimeException($text);
         }
 
         return (array) $response->json();

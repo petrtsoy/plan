@@ -5,6 +5,7 @@ namespace App\Services;
 use App\Models\OutboxMessage;
 use App\Services\Outbox\ItSender;
 use App\Services\Outbox\OnecSender;
+use App\Services\Outbox\Rejected;
 use App\Services\Outbox\Sender;
 use Illuminate\Contracts\Container\Container;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
@@ -17,7 +18,8 @@ use Illuminate\Support\Str;
  * Сообщение ставится в одной транзакции с изменением, поэтому перемещение не теряется,
  * даже если 1С недоступна. Неудача – растущая пауза до следующей попытки, после
  * MAX_ATTEMPTS попыток сообщение становится failed и ждет человека (страница "что не ушло",
- * кнопка "Повторить"). Куда именно отправлять, знает драйвер target (onec, it).
+ * кнопка "Повторить"); отказ, который повторами не исправить (Outbox\Rejected), – failed
+ * с первого раза. Куда именно отправлять, знает драйвер target (onec, it).
  */
 class OutboxSender
 {
@@ -116,7 +118,9 @@ class OutboxSender
     private function failed(OutboxMessage $message, \Throwable $e): string
     {
         $attempts = $message->attempts + 1;
-        $spent = $attempts >= OutboxMessage::MAX_ATTEMPTS;
+        // Отказ внешней системы (устройства нет, тело не прошло проверку) повторами не
+        // вылечить: сразу к человеку, не занимая очередь на сутки вперед.
+        $spent = $attempts >= OutboxMessage::MAX_ATTEMPTS || $e instanceof Rejected;
 
         $message->update([
             'attempts' => $attempts,

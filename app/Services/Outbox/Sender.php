@@ -21,7 +21,8 @@ interface Sender
 
     /**
      * Отправить сообщение. Возвращает ключ записи во внешней системе (external_ref)
-     * или null, если его нет. Не ушло – исключение с текстом для outbox.error.
+     * или null, если его нет. Не ушло – исключение с текстом для outbox.error;
+     * если повторять незачем (отказ, а не сбой связи) – Rejected.
      */
     public function send(OutboxMessage $message): ?string;
 }

@@ -14,6 +14,8 @@ use App\Models\Room;
 use App\Models\User;
 use App\Services\AssetMover;
 use App\Services\Outbox\ItSender;
+use App\Services\Outbox\Rejected;
+use App\Services\OutboxSender;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\Client\Request;
 use Illuminate\Support\Facades\Http;
@@ -210,14 +212,62 @@ class ItExchangeTest extends TestCase
 
     public function test_driver_reports_a_refusal_from_it(): void
     {
-        $room = $this->room(1);
-        $other = Room::create(['floor_id' => $room->floor_id, 'number' => '102', 'name' => 'Серверная']);
-        $asset = $this->asset($room, ['it_device_id' => 77]);
-        app(AssetMover::class)->move($asset, ['room_id' => $other->id]);
+        $message = $this->moveInside();
 
         Http::fake(['it.test/*' => Http::response(['status' => 'error', 'error' => 'device_not_found'], 404)]);
 
+        $this->expectException(Rejected::class);
         $this->expectExceptionMessage('it.his.kz ответил 404: device_not_found');
-        app(ItSender::class)->send(OutboxMessage::sole());
+        app(ItSender::class)->send($message);
+    }
+
+    /** Замечания it.his.kz (связка кабинета устарела, сотрудника там нет) – в журнал. */
+    public function test_warnings_from_it_go_to_the_journal(): void
+    {
+        $message = $this->moveInside();
+        Http::fake(['it.test/*' => Http::response(['status' => 'success', 'move_id' => 9012, 'warnings' => ['room_not_matched']])]);
+
+        $this->assertSame('sent', app(OutboxSender::class)->send($message));
+
+        $log = AuditLog::where('subject_type', 'it_exchange')->sole();
+        $this->assertSame('move_sent', $log->action);
+        $this->assertSame(['room_not_matched'], $log->changes['warnings']);
+        $this->assertSame('9012', $message->fresh()->external_ref);
+    }
+
+    /**
+     * Чего повторы не исправят (устройства там нет), – сразу к человеку; незаведенный
+     * филиал пройдет сам после hr:sync в it.his.kz, поэтому такое сообщение повторяется.
+     */
+    public function test_refusal_is_not_repeated_but_an_unsynced_branch_is(): void
+    {
+        $message = $this->moveInside();
+        Http::fake(['it.test/*' => Http::sequence()
+            ->push(['status' => 'error', 'error' => 'device_not_found'], 404)
+            ->push(['status' => 'error', 'error' => 'office_not_found'], 422)]);
+
+        $this->assertSame('failed', app(OutboxSender::class)->send($message));
+        $message->refresh();
+        $this->assertSame(1, $message->attempts);
+        $this->assertNull($message->next_attempt_at);
+        $this->assertStringContainsString('device_not_found', $message->error);
+
+        // Филиал заведут синхронизацией – такое сообщение ждет повтора, а не человека.
+        app(OutboxSender::class)->retry($message);
+
+        $this->assertSame('retry', app(OutboxSender::class)->send($message));
+        $message->refresh();
+        $this->assertSame('pending', $message->status);
+        $this->assertTrue($message->next_attempt_at->greaterThan(now()));
+    }
+
+    /** Перемещение ИТ-единицы внутри филиала: сообщение для it.his.kz, акта нет. */
+    private function moveInside(): OutboxMessage
+    {
+        $room = $this->room(1);
+        $other = Room::create(['floor_id' => $room->floor_id, 'number' => '102', 'name' => 'Серверная']);
+        app(AssetMover::class)->move($this->asset($room, ['it_device_id' => 77]), ['room_id' => $other->id]);
+
+        return OutboxMessage::sole();
     }
 }
