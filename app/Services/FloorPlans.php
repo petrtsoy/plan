@@ -191,12 +191,28 @@ class FloorPlans
     {
         $types = $this->cleanTypes($plan);
         abort_unless(isset($types[$index]), 404);
+
+        return $this->cleanRender($plan, 'preview', $types[$index]['key'], "prev-{$index}");
+    }
+
+    /** Как будет после чистки: рамка подложки без типов $hide (галочки еще не применены). */
+    public function cleanResult(Plan $plan, array $hide): string
+    {
+        $hide = array_values(array_intersect(array_column($this->cleanTypes($plan), 'key'), $hide));
+        sort($hide);
+
+        return $this->cleanRender($plan, 'result', implode(';', $hide), 'res-'.substr(md5(implode(';', $hide)), 0, 10));
+    }
+
+    /** Картинка рамки подложки через pdf_clean.py, с кэшем по рамке. */
+    private function cleanRender(Plan $plan, string $mode, string $keys, string $name): string
+    {
         $c = $plan->crop ?? ['x0' => 0, 'y0' => 0, 'x1' => 1, 'y1' => 1];
         $dir = $this->cleanDir($plan);
-        $png = "{$dir}/prev-{$index}-".substr(md5(json_encode([$c['x0'], $c['y0'], $c['x1'], $c['y1']])), 0, 8).'.png';
+        $png = "{$dir}/{$name}-".substr(md5(json_encode([$c['x0'], $c['y0'], $c['x1'], $c['y1']])), 0, 8).'.png';
         $disk = Storage::disk('local');
         if (! $disk->exists($png)) {
-            $this->python(['preview', $disk->path("{$dir}/page.pdf"), $types[$index]['key'], $disk->path($png),
+            $this->python([$mode, $disk->path("{$dir}/page.pdf"), $keys, $disk->path($png),
                 ...array_map(fn ($v) => (string) $v, [$c['x0'], $c['y0'], $c['x1'], $c['y1'], 2400])]);
         }
 

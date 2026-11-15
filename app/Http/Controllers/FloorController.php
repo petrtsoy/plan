@@ -203,6 +203,13 @@ class FloorController extends Controller
         return response()->file($plans->cleanPreview($plan, $index), ['Cache-Control' => 'private, max-age=86400']);
     }
 
+    public function cleanResult(Request $request, Plan $plan, FloorPlans $plans): BinaryFileResponse
+    {
+        $hide = array_filter((array) $request->query('hide', []), 'is_string');
+
+        return response()->file($plans->cleanResult($plan, $hide), ['Cache-Control' => 'private, max-age=86400']);
+    }
+
     public function clean(Request $request, Plan $plan, FloorPlans $plans): JsonResponse
     {
         $data = $request->validate(['hide' => ['present', 'array'], 'hide.*' => ['string', 'max:64']]);

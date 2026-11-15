@@ -10,6 +10,8 @@
   pdf_clean.py apply   SRC PAGE OUT_PDF KEYS     – страница без типов KEYS (через ;)
   pdf_clean.py preview ONE_PAGE_PDF KEY OUT_PNG X0 Y0 X1 Y1 PX
                                                   – только тип KEY в рамке (доли листа), PNG с прозрачностью
+  pdf_clean.py result  ONE_PAGE_PDF KEYS OUT_PNG X0 Y0 X1 Y1 PX
+                                                  – рамка без типов KEYS (через ;): как будет после чистки
 
 Нужен PyMuPDF (pip pymupdf или python3-fitz).
 """
@@ -253,20 +255,20 @@ def main(argv):
             types = [{'key': k, 'label': label(k, n), 'color': hexcolor(k), 'count': n}
                      for k, n in sorted(counts.items(), key=lambda kv: (order[kv[0][0]], -kv[1]))]
             json.dump({'types': types}, sys.stdout, ensure_ascii=False)
-    elif mode == 'preview':
-        src, key, out = argv[2], argv[3], argv[4]
+    elif mode in ('preview', 'result'):
+        src, keys, out = argv[2], argv[3], argv[4]
         x0, y0, x1, y1, px = map(float, argv[5:10])
         doc = fitz.open(src)
         page, data, _ = stream(doc)
-        new, _ = process(data, keep={key})
+        new, _ = process(data, keep={keys}) if mode == 'preview' else process(data, frozenset(keys.split(';')))
         put(doc, new)
         page = doc[0]
         r = page.rect
         clip = fitz.Rect(r.x0 + x0 * r.width, r.y0 + y0 * r.height, r.x0 + x1 * r.width, r.y0 + y1 * r.height)
         z = px / max(clip.width, clip.height)
-        page.get_pixmap(matrix=fitz.Matrix(z, z), clip=clip, alpha=True).save(out)
+        page.get_pixmap(matrix=fitz.Matrix(z, z), clip=clip, alpha=mode == 'preview').save(out)
     else:
-        raise SystemExit('mode: analyze | apply | preview')
+        raise SystemExit('mode: analyze | apply | preview | result')
 
 
 if __name__ == "__main__":

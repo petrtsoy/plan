@@ -69,6 +69,9 @@ class PlanCleanTest extends TestCase
         $keys = collect($this->getJson("/plans/{$plan->id}/clean")->assertOk()->json('types'))->pluck('key')->all();
         $this->assertSame(['L:1.00:0.00,0.00,0.00', 'L:0.50:0.50,0.50,0.50', 'T:10.0:0.50,0.50,0.50'], $keys);
         $this->get("/plans/{$plan->id}/clean/1.png")->assertOk();
+        // Как будет: без серых – картинка рамки, непрозрачная.
+        $res = $this->get("/plans/{$plan->id}/clean/result.png?hide[]=".urlencode('L:0.50:0.50,0.50,0.50'))->assertOk();
+        $this->assertSame(2400, getimagesize($res->getFile()->getPathname())[0], 'длинная сторона рамки – 2400 px');
 
         $this->postJson("/plans/{$plan->id}/clean", ['hide' => ['L:0.50:0.50,0.50,0.50', 'T:10.0:0.50,0.50,0.50', 'чужой']])->assertOk();
 

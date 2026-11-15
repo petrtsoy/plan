@@ -220,6 +220,7 @@
         placing = false;
         points = [];
         temp.clearLayers();
+        if (resultLayer) { map.removeLayer(resultLayer); resultLayer = null; }
         cleanPreview(null);
         hint.hidden = true;
         panel.innerHTML = '';
@@ -300,7 +301,8 @@
     }
     function cleanList(types) {
         var html = '<div class="side-block clean"><strong>Очистить чертеж</strong>' +
-            '<p class="small muted">Снимите галочки с лишнего: размеры, оси, штриховка. Наведите на строку – тип подсветится на плане красным. Подложка перерисуется, расставленное останется на местах.</p>';
+            '<p class="small muted">Снимите галочки с лишнего: размеры, оси, штриховка – план сразу покажет, что останется. Наведите на строку – тип подсветится красным; пустая подсветка – тип вне рамки (штамп, рамка листа). Сохраняется кнопкой "Применить".</p>' +
+            '<p class="small muted" id="clean-state" hidden></p>';
         var kind = null;
         types.forEach(function (t, i) {
             if (t.key[0] !== kind) { kind = t.key[0]; html += '<div class="clean-kind">' + KINDS[kind] + '</div>'; }
@@ -314,6 +316,11 @@
             row.addEventListener('mouseenter', function () { cleanPreview(+row.dataset.i); });
         });
         panel.querySelector('.clean').addEventListener('mouseleave', function () { cleanPreview(null); });
+        var timer;
+        panel.querySelectorAll('.clean-row input').forEach(function (c) {
+            c.addEventListener('change', function () { clearTimeout(timer); timer = setTimeout(cleanResult, 400); });
+        });
+        cleanResult();
         document.getElementById('clean-no').onclick = stopTool;
         document.getElementById('clean-ok').onclick = function () {
             var hide = [].map.call(panel.querySelectorAll('.clean-row input:not(:checked)'), function (c) { return c.dataset.key; });
@@ -324,10 +331,36 @@
                 .catch(function () { var b = document.getElementById('clean-ok'); if (b) { b.disabled = false; b.textContent = 'Применить'; } });
         };
     }
+    // Что останется: картинка рамки без снятых типов поверх подложки (пока не применено).
+    var resultLayer = null, resultSeq = 0;
+    function cleanResult() {
+        var seq = ++resultSeq;
+        var hide = [].map.call(panel.querySelectorAll('.clean-row input:not(:checked)'), function (c) { return c.dataset.key; });
+        var state = document.getElementById('clean-state');
+        if (!hide.length) {
+            if (resultLayer) { map.removeLayer(resultLayer); resultLayer = null; }
+            if (state) state.hidden = true;
+            return cleanPreview(null);
+        }
+        var url = F.urls.clean + '/result.png?' + hide.map(function (k) { return 'hide[]=' + encodeURIComponent(k); }).join('&');
+        if (state) { state.hidden = false; state.textContent = 'Перерисовываю…'; }
+        var img = new Image();
+        img.onload = function () {
+            if (tool !== 'clean' || seq !== resultSeq) return;
+            if (resultLayer) map.removeLayer(resultLayer);
+            resultLayer = L.imageOverlay(url, bounds, { interactive: false }).addTo(map);
+            if (state) state.textContent = 'Так будет после "Применить". Скрыто типов: ' + hide.length + '.';
+            cleanPreview(null);
+        };
+        img.onerror = function () { if (seq === resultSeq && state) state.textContent = 'Не удалось перерисовать.'; };
+        img.src = url;
+    }
     var previewLayer = null;
     function cleanPreview(i) {
         if (previewLayer) { map.removeLayer(previewLayer); previewLayer = null; }
-        if (planImage) planImage.setOpacity(i === null ? 1 : 0.35);
+        var base = i === null ? 1 : 0.35;
+        if (planImage) planImage.setOpacity(resultLayer ? 0 : base);
+        if (resultLayer) resultLayer.setOpacity(base);
         if (i !== null && bounds) {
             previewLayer = L.imageOverlay(F.urls.clean + '/' + i + '.png', bounds, { interactive: false, className: 'clean-preview' }).addTo(map);
         }
