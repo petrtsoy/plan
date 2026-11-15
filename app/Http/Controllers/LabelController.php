@@ -18,7 +18,7 @@ use Illuminate\View\View;
  */
 class LabelController extends Controller
 {
-    /** Этикеток на листе: 3 в ряд по 70 x 37 мм – 24 на A4, десять листов за раз. */
+    /** Этикеток на листе: 3 в ряд по 59 x 33 мм – 24 на A4, десять листов за раз. */
     private const PER_PAGE = 240;
 
     public function index(Request $request): View

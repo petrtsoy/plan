@@ -5,12 +5,17 @@ use App\Http\Controllers\AssetController;
 use App\Http\Controllers\Auth\LoginController;
 use App\Http\Controllers\Auth\SsoController;
 use App\Http\Controllers\BuildingController;
+use App\Http\Controllers\ContractorController;
 use App\Http\Controllers\DashboardController;
+use App\Http\Controllers\FileController;
 use App\Http\Controllers\FloorController;
 use App\Http\Controllers\InventoryController;
 use App\Http\Controllers\LabelController;
+use App\Http\Controllers\MaintenanceController;
+use App\Http\Controllers\OutboxController;
 use App\Http\Controllers\RoomController;
 use App\Http\Controllers\SettingsController;
+use App\Http\Controllers\TransferController;
 use Illuminate\Support\Facades\Route;
 
 Route::middleware('guest')->group(function () {
@@ -37,6 +42,9 @@ Route::middleware(['auth', 'role'])->group(function () {
     Route::get('/floors/{floor}', [FloorController::class, 'show'])->name('floors.show');
     Route::get('/plans/{plan}/image', [FloorController::class, 'planImage'])->name('plans.image');
     Route::get('/assets/{asset}', [AssetController::class, 'show'])->name('assets.show');
+    // Файлы к записям (акт ТО, свидетельство о поверке): только вошедшим.
+    Route::get('/files/{attachment}', [FileController::class, 'show'])->name('files.show');
+
     // Скан QR с этикетки: та же карточка, но без id в ссылке.
     Route::get('/a/{asset:qr_code}', [AssetController::class, 'show'])->name('assets.qr');
 
@@ -67,6 +75,23 @@ Route::middleware(['auth', 'role'])->group(function () {
     Route::middleware('role:assets')->group(function () {
         Route::post('/floors/{floor}/assets', [AssetController::class, 'store'])->name('floors.assets.store');
         Route::post('/assets/{asset}/place', [AssetController::class, 'place'])->name('assets.place');
+
+        // Акты передачи: кто правит оборудование, тот и оформляет (в том числе черновики из it.his.kz).
+        Route::get('/transfers', [TransferController::class, 'index'])->name('transfers.index');
+        Route::get('/transfers/{transfer}/print', [TransferController::class, 'print'])->name('transfers.print');
+        Route::post('/transfers/{transfer}/issue', [TransferController::class, 'issue'])->name('transfers.issue');
+
+        // ТО и поверка: что пора обслуживать, регламент и выполнение, сервисные организации.
+        Route::get('/maintenance', [MaintenanceController::class, 'index'])->name('maintenance.index');
+        Route::get('/maintenance/records', [MaintenanceController::class, 'records'])->name('maintenance.records');
+        Route::get('/maintenance/assets/{asset}', [MaintenanceController::class, 'asset'])->name('maintenance.asset');
+        Route::post('/maintenance/assets/{asset}/plans', [MaintenanceController::class, 'storePlan'])->name('maintenance.plans.store');
+        Route::post('/maintenance/assets/{asset}/plans/from-model', [MaintenanceController::class, 'planFromModel'])->name('maintenance.plans.from-model');
+        Route::put('/maintenance/plans/{plan}', [MaintenanceController::class, 'updatePlan'])->name('maintenance.plans.update');
+        Route::post('/maintenance/assets/{asset}/records', [MaintenanceController::class, 'storeRecord'])->name('maintenance.records.store');
+        Route::get('/contractors', [ContractorController::class, 'index'])->name('contractors.index');
+        Route::post('/contractors', [ContractorController::class, 'store'])->name('contractors.store');
+        Route::put('/contractors/{contractor}', [ContractorController::class, 'update'])->name('contractors.update');
     });
 
     Route::middleware('role:inventory')->group(function () {
@@ -80,6 +105,8 @@ Route::middleware(['auth', 'role'])->group(function () {
         Route::get('/admin/users', [AdminController::class, 'users'])->name('admin.users');
         Route::post('/admin/users', [AdminController::class, 'storeUser'])->name('admin.users.store');
         Route::put('/admin/users/{user}', [AdminController::class, 'updateUser'])->name('admin.users.update');
+        Route::get('/admin/outbox', [OutboxController::class, 'index'])->name('admin.outbox');
+        Route::post('/admin/outbox/{message}/retry', [OutboxController::class, 'retry'])->name('admin.outbox.retry');
         Route::get('/admin/settings', [SettingsController::class, 'index'])->name('admin.settings');
         Route::post('/admin/settings/import', [SettingsController::class, 'import'])->name('admin.settings.import');
         Route::put('/admin/settings/{group}', [SettingsController::class, 'update'])->name('admin.settings.update');
