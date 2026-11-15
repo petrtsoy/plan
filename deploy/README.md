@@ -4,7 +4,8 @@
 PHP 8.3 (php-fpm), MySQL 8.0, Apache 2.4. Приложение работает от `ubuntu`, каталог
 `/var/www/plan`, логи `/var/log/plan`. Сборки фронтенда нет. Порядок повторяет
 `it/deploy/README.md`. Для чертежей в PDF нужен `pdftoppm` из пакета `poppler-utils`
-(на hr-supply уже стоит, версия 24.02).
+(на hr-supply уже стоит, версия 24.02). Для чистки подложки по типам линий – PyMuPDF:
+`sudo apt install python3-fitz` (скрипт `scripts/pdf_clean.py`, запускается через `python3`).
 
 До начала:
 - DNS `plan.his.kz` -> 94.247.128.188 (на 14.11.2026 записи нет);

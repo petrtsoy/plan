@@ -40,6 +40,11 @@ return [
         'bin' => env('POPPLER_BIN', ''),
     ],
 
+    // Python с PyMuPDF для чистки подложки (scripts/pdf_clean.py). На сервере – python3 и python3-fitz.
+    'python' => [
+        'bin' => env('PYTHON_BIN', 'python3'),
+    ],
+
     // Вход через SSO auth.his.kz (OAuth 2.0 Authorization Code). ЭЦП/пароль
     // проверяет сам сервер авторизации, сюда приходит ИИН в userinfo.
     'sso' => [

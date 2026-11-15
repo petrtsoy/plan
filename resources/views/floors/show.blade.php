@@ -28,6 +28,7 @@
         @if($canPlans || $canAssets)
             <div class="tools">
                 @if($canPlans && $floor->plan)<button type="button" class="btn" data-tool="calibrate" title="Две точки известного отрезка и его длина или помещение с известной площадью">Масштаб</button>@endif
+                @if($canPlans && $floor->plan?->source === \App\Enums\PlanSource::Pdf)<button type="button" class="btn" data-tool="clean" title="Скрыть размеры, оси, штриховку и прочее по типам линий">Очистить</button>@endif
                 @if($canPlans && $floor->plan)<button type="button" class="btn" data-tool="crop" title="Оставить от листа только здание: рамка по двум углам">Обрезать</button>@endif
                 @if($canPlans)<button type="button" class="btn" data-tool="room" title="Обвести контур по точкам">Помещение</button>@endif
                 @if($canAssets)<button type="button" class="btn" data-tool="place" title="Поставить единицу на план">Поставить</button>@endif

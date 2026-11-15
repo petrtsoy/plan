@@ -422,6 +422,14 @@ main.wide { max-width: none; padding: 0; display: flex; }
 .leaflet-tooltip.room-label { background: transparent; border: 0; box-shadow: none; color: var(--brand-700); font-weight: 600; font-size: 12px; padding: 0; }
 .leaflet-tooltip.room-label::before { display: none; }
 .room-pending span { display: inline-block; transform: translate(-50%, -50%); white-space: nowrap; padding: 1px 5px; border: 1px dashed var(--brand-700); border-radius: 9px; background: rgba(255, 255, 255, .85); color: var(--brand-700); font-size: 11px; font-weight: 600; cursor: pointer; }
+.clean-kind { margin: 10px 0 2px; font-weight: 600; font-size: 12px; color: var(--muted); }
+.clean-row { display: grid; grid-template-columns: auto 14px 1fr auto; gap: 6px; align-items: center; padding: 2px 4px; border-radius: 4px; cursor: pointer; font-size: 13px; }
+.clean-row:hover { background: #fee2e2; }
+.clean-sw { width: 14px; height: 10px; border: 2px solid transparent; border-radius: 2px; box-sizing: border-box; }
+/* Пока чистим – только чертеж: значки, подписи и контуры не мешают. */
+.cleaning .leaflet-marker-pane, .cleaning .leaflet-tooltip-pane, .cleaning .leaflet-overlay-pane svg { display: none; }
+/* Тип под курсором – черные линии на прозрачном фоне перекрашиваются в красный. */
+.clean-preview { filter: brightness(0) saturate(100%) invert(18%) sepia(98%) saturate(7000%) hue-rotate(356deg) brightness(95%); }
 .imp-groups label.check { display: flex; gap: 6px; align-items: center; margin-top: 8px; }
 .imp-groups select { width: 100%; }
 .imp-notes { margin: 8px 0 0; padding-left: 18px; }

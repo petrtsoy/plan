@@ -34,6 +34,7 @@ class Plan extends Model
             'rotation' => 'float',
             'calibration' => 'array',
             'crop' => 'array',
+            'clean' => 'array',
             'is_current' => 'boolean',
         ];
     }

@@ -134,7 +134,10 @@ class FloorPlans
 
         $out = "plans/{$plan->floor_id}/".now()->format('Ymd-His').'-'.Str::lower(Str::random(6)).'-crop.png';
         if ($plan->source === PlanSource::Pdf) {
-            $this->renderPdf($plan->source_path, $out, $plan->page, $crop);
+            // Очищенная страница – отдельный PDF из одной страницы.
+            $plan->clean['pdf'] ?? null
+                ? $this->renderPdf($plan->clean['pdf'], $out, 1, $crop)
+                : $this->renderPdf($plan->source_path, $out, $plan->page, $crop);
         } else {
             $this->cropImage($plan->source_path, $out, $crop);
         }
@@ -162,6 +165,112 @@ class FloorPlans
 
             return $new;
         });
+    }
+
+    /**
+     * Типы линий, заливок и текста страницы PDF (scripts/pdf_clean.py analyze), с отметкой скрытых.
+     * Разбор – один раз на файл и страницу, дальше из кэша рядом с подложкой.
+     */
+    public function cleanTypes(Plan $plan): array
+    {
+        $dir = $this->cleanDir($plan);
+        $disk = Storage::disk('local');
+        if (! $disk->exists("{$dir}/types.json")) {
+            $disk->makeDirectory($dir);
+            $json = $this->python(['analyze', $disk->path($plan->source_path), (string) $plan->page, $disk->path("{$dir}/page.pdf")]);
+            $disk->put("{$dir}/types.json", $json);
+        }
+        $hidden = array_flip($plan->clean['hide'] ?? []);
+
+        return array_map(fn ($t) => $t + ['hidden' => isset($hidden[$t['key']])],
+            json_decode($disk->get("{$dir}/types.json"), true)['types'] ?? []);
+    }
+
+    /** Картинка одного типа в рамке подложки (прозрачный фон): подсветить на плане, что именно скрываем. */
+    public function cleanPreview(Plan $plan, int $index): string
+    {
+        $types = $this->cleanTypes($plan);
+        abort_unless(isset($types[$index]), 404);
+        $c = $plan->crop ?? ['x0' => 0, 'y0' => 0, 'x1' => 1, 'y1' => 1];
+        $dir = $this->cleanDir($plan);
+        $png = "{$dir}/prev-{$index}-".substr(md5(json_encode([$c['x0'], $c['y0'], $c['x1'], $c['y1']])), 0, 8).'.png';
+        $disk = Storage::disk('local');
+        if (! $disk->exists($png)) {
+            $this->python(['preview', $disk->path("{$dir}/page.pdf"), $types[$index]['key'], $disk->path($png),
+                ...array_map(fn ($v) => (string) $v, [$c['x0'], $c['y0'], $c['x1'], $c['y1'], 2400])]);
+        }
+
+        return $disk->path($png);
+    }
+
+    /**
+     * Скрыть типы на подложке: страница PDF без них, новая версия подложки с той же рамкой.
+     * Геометрия листа не меняется, поэтому масштаб и расставленное остаются как есть.
+     */
+    public function clean(Plan $plan, array $hide): Plan
+    {
+        $known = array_column($this->cleanTypes($plan), 'key');
+        $hide = array_values(array_intersect($known, $hide));
+        $disk = Storage::disk('local');
+        $base = "plans/{$plan->floor_id}/".now()->format('Ymd-His').'-'.Str::lower(Str::random(6)).'-clean';
+        $pdf = null;
+        if ($hide) {
+            $pdf = "{$base}.pdf";
+            $this->python(['apply', $disk->path($plan->source_path), (string) $plan->page, $disk->path($pdf), implode(';', $hide)]);
+            $this->renderPdf($pdf, "{$base}.png", 1, $plan->crop);
+        } else {
+            $this->renderPdf($plan->source_path, "{$base}.png", $plan->page, $plan->crop);
+        }
+        $size = @getimagesize($disk->path("{$base}.png"));
+        if (! $size) {
+            throw ValidationException::withMessages(['hide' => 'Не удалось перерисовать чертеж.']);
+        }
+        $f = $size[0] / $plan->width_px;
+
+        return DB::transaction(function () use ($plan, $base, $size, $hide, $pdf, $f) {
+            $new = $plan->replicate(['is_current', 'calibration']);
+            $new->fill(['image_path' => "{$base}.png", 'width_px' => $size[0], 'height_px' => $size[1],
+                'clean' => $hide ? ['hide' => $hide, 'pdf' => $pdf] : null,
+                'is_current' => true, 'user_id' => Auth::id(), 'calibration' => ['cleaned_from' => $plan->id]]);
+            if ($plan->isCalibrated()) {
+                $new->meters_per_px = $plan->meters_per_px / $f;
+            }
+            $plan->floor->plans()->update(['is_current' => false]);
+            $new->save();
+
+            // Без масштаба координаты – пиксели; картинка того же размера, пересчет – на случай округления.
+            if (! $plan->isCalibrated() && abs($f - 1) > 1e-6) {
+                $this->remapFloor($plan->floor_id, fn (float $x, float $y) => [$x * $f, $y * $f]);
+            }
+
+            return $new;
+        });
+    }
+
+    private function cleanDir(Plan $plan): string
+    {
+        abort_unless($plan->source === PlanSource::Pdf, 422, 'Чистка – только для подложки из PDF.');
+
+        return "plans/{$plan->floor_id}/clean/".substr(md5($plan->source_path), 0, 12)."-{$plan->page}";
+    }
+
+    /** scripts/pdf_clean.py с аргументами; stdout или ошибка для пользователя. */
+    private function python(array $args): string
+    {
+        $process = new Process([config('services.python.bin'), base_path('scripts/pdf_clean.py'), ...$args]);
+        $process->setTimeout(120);
+        try {
+            $process->run();
+        } catch (\Throwable $e) {
+            throw ValidationException::withMessages(['hide' => 'Чистка недоступна: '.$e->getMessage()]);
+        }
+        if (! $process->isSuccessful()) {
+            $err = trim($process->getErrorOutput());
+            $why = str_contains($err, 'fitz') ? 'на сервере нет PyMuPDF (python3-fitz)' : (Str::afterLast($err, "\n") ?: 'python3 не найден');
+            throw ValidationException::withMessages(['hide' => "Чистка не удалась: {$why}"]);
+        }
+
+        return $process->getOutput();
     }
 
     /** Все координаты этажа – через $mapper (метры или пиксели старой подложки -> новые). */

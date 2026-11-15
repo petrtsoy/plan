@@ -11,8 +11,8 @@ use App\Models\Layer;
 use App\Models\Plan;
 use App\Services\AssetMover;
 use App\Services\FloorPlans;
-use App\Support\AssetIcons;
 use App\Services\ProjectImport;
+use App\Support\AssetIcons;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -73,6 +73,7 @@ class FloorController extends Controller
                 'urls' => [
                     'calibrate' => $floor->plan ? route('plans.calibrate', $floor->plan) : null,
                     'crop' => $floor->plan ? route('plans.crop', $floor->plan) : null,
+                    'clean' => $floor->plan ? route('plans.clean', $floor->plan) : null,
                     'rooms' => route('floors.rooms.store', $floor),
                     'room' => route('rooms.update', ['room' => '__ID__']),
                     'assets' => route('floors.assets.store', $floor),
@@ -190,6 +191,25 @@ class FloorController extends Controller
         $plans->crop($plan, array_map('floatval', $data['p1']), array_map('floatval', $data['p2']));
 
         return response()->json(['ok' => true, 'message' => 'Чертеж обрезан. Прежний вариант сохранен в истории подложек.']);
+    }
+
+    public function cleanTypes(Plan $plan, FloorPlans $plans): JsonResponse
+    {
+        return response()->json(['types' => $plans->cleanTypes($plan)]);
+    }
+
+    public function cleanPreview(Plan $plan, int $index, FloorPlans $plans): BinaryFileResponse
+    {
+        return response()->file($plans->cleanPreview($plan, $index), ['Cache-Control' => 'private, max-age=86400']);
+    }
+
+    public function clean(Request $request, Plan $plan, FloorPlans $plans): JsonResponse
+    {
+        $data = $request->validate(['hide' => ['present', 'array'], 'hide.*' => ['string', 'max:64']]);
+        abort_unless($plan->is_current, 422, 'Чистить можно только текущую подложку.');
+        $plans->clean($plan, $data['hide']);
+
+        return response()->json(['ok' => true, 'message' => 'Чертеж перерисован. Прежний вариант сохранен в истории подложек.']);
     }
 
     /** Точка единицы для плана: цвет слоя и срок ТО (худший из действующих). */

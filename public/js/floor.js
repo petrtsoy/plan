@@ -71,11 +71,11 @@
     function round(v) { return Math.round(v * 1000) / 1000; }
 
     // --- Подложка ---
-    var bounds;
+    var bounds, planImage;
     if (F.plan) {
         var p = F.plan;
         bounds = L.latLngBounds(ll(p.ox, p.oy), ll(p.ox + p.w * p.k, p.oy + p.h * p.k));
-        L.imageOverlay(p.url, bounds, { interactive: false }).addTo(map);
+        planImage = L.imageOverlay(p.url, bounds, { interactive: false }).addTo(map);
     }
     var all = F.rooms.reduce(function (acc, r) { return acc.concat(r.polygon); }, [])
         .concat(F.assets.map(function (a) { return [a.x, a.y]; }));
@@ -213,15 +213,17 @@
         if (name === 'crop') say('Щелкните по двум противоположным углам рамки вокруг здания – останется только она. Esc – отмена.');
         if (name === 'room') say('Щелкайте по углам помещения. Закончить – щелчок по первой точке или двойной щелчок. Esc – отмена.');
         if (name === 'place') placeForm(opts);
+        if (name === 'clean') { map.getContainer().classList.add('cleaning'); cleanForm(); }
     }
     function stopTool() {
         tool = null;
         placing = false;
         points = [];
         temp.clearLayers();
+        cleanPreview(null);
         hint.hidden = true;
         panel.innerHTML = '';
-        map.getContainer().classList.remove('drawing');
+        map.getContainer().classList.remove('drawing', 'cleaning');
         document.querySelectorAll('[data-tool]').forEach(function (b) { b.classList.remove('primary'); });
     }
     function say(text) { hint.textContent = text; hint.hidden = false; }
@@ -285,6 +287,50 @@
             send(F.urls.calibrate, 'POST', { points: points, value: parseFloat(input.value.replace(',', '.')) })
                 .then(function (res) { sessionToast(res.message); location.reload(); });
         };
+    }
+
+    // Чистка: типы линий, заливок и текста PDF – галочка "видно", наведение – подсветить тип на плане
+    var KINDS = { L: 'Линии', F: 'Заливки', T: 'Текст' };
+    function cleanForm() {
+        panel.innerHTML = '<div class="side-block"><strong>Очистить чертеж</strong><p class="small muted">Разбираю чертеж…</p></div>';
+        fetch(F.urls.clean, { headers: { Accept: 'application/json' } })
+            .then(function (r) { return r.json().then(function (b) { if (!r.ok) throw new Error(b.errors ? Object.values(b.errors).flat().join(' ') : (b.message || 'Ошибка ' + r.status)); return b; }); })
+            .then(function (res) { if (tool === 'clean') cleanList(res.types); })
+            .catch(function (e) { toast(e.message, true); stopTool(); });
+    }
+    function cleanList(types) {
+        var html = '<div class="side-block clean"><strong>Очистить чертеж</strong>' +
+            '<p class="small muted">Снимите галочки с лишнего: размеры, оси, штриховка. Наведите на строку – тип подсветится на плане красным. Подложка перерисуется, расставленное останется на местах.</p>';
+        var kind = null;
+        types.forEach(function (t, i) {
+            if (t.key[0] !== kind) { kind = t.key[0]; html += '<div class="clean-kind">' + KINDS[kind] + '</div>'; }
+            html += '<label class="clean-row" data-i="' + i + '"><input type="checkbox" data-key="' + esc(t.key) + '"' + (t.hidden ? '' : ' checked') + '>' +
+                '<span class="clean-sw" style="' + (kind === 'F' ? 'background:' : 'border-color:') + t.color + '"></span>' +
+                '<span title="' + t.color + '">' + esc(t.label) + '</span><span class="muted small">' + t.count + '</span></label>';
+        });
+        html += '<div class="actions"><button class="btn primary" id="clean-ok">Применить</button><button class="btn link" id="clean-no">Отмена</button></div></div>';
+        panel.innerHTML = html;
+        panel.querySelectorAll('.clean-row').forEach(function (row) {
+            row.addEventListener('mouseenter', function () { cleanPreview(+row.dataset.i); });
+        });
+        panel.querySelector('.clean').addEventListener('mouseleave', function () { cleanPreview(null); });
+        document.getElementById('clean-no').onclick = stopTool;
+        document.getElementById('clean-ok').onclick = function () {
+            var hide = [].map.call(panel.querySelectorAll('.clean-row input:not(:checked)'), function (c) { return c.dataset.key; });
+            this.disabled = true;
+            this.textContent = 'Перерисовываю…';
+            send(F.urls.clean, 'POST', { hide: hide })
+                .then(function (res) { sessionToast(res.message); location.reload(); })
+                .catch(function () { var b = document.getElementById('clean-ok'); if (b) { b.disabled = false; b.textContent = 'Применить'; } });
+        };
+    }
+    var previewLayer = null;
+    function cleanPreview(i) {
+        if (previewLayer) { map.removeLayer(previewLayer); previewLayer = null; }
+        if (planImage) planImage.setOpacity(i === null ? 1 : 0.35);
+        if (i !== null && bounds) {
+            previewLayer = L.imageOverlay(F.urls.clean + '/' + i + '.png', bounds, { interactive: false, className: 'clean-preview' }).addTo(map);
+        }
     }
 
     // Обрезка: рамка по двум углам
