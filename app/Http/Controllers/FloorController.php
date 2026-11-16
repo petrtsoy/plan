@@ -46,6 +46,8 @@ class FloorController extends Controller
             // В здании проекта настоящих единиц не бывает – только позиции вариантов.
             'canAssets' => $user->edits(Area::Assets) && ! $floor->building->is_candidate,
             'categories' => Category::with('layer')->orderBy('layer_id')->orderBy('sort')->orderBy('name')->get(),
+            // История подложек: к любой версии можно вернуться, файлы прежних никуда не деваются.
+            'plans' => $floor->plans()->orderByDesc('id')->limit(20)->get(),
             'map' => [
                 'plan' => $floor->plan ? [
                     'id' => $floor->plan->id,
@@ -239,6 +241,15 @@ class FloorController extends Controller
         $plans->clean($plan, $data['hide']);
 
         return response()->json(['ok' => true, 'message' => 'Чертеж перерисован. Прежний вариант сохранен в истории подложек.']);
+    }
+
+    /** Вернуть прежнюю версию подложки (чистка, ластик и обрезка делают новую, а не правят старую). */
+    public function restorePlan(Plan $plan, FloorPlans $plans): RedirectResponse
+    {
+        $plans->restore($plan);
+
+        return redirect()->route('floors.show', $plan->floor)
+            ->with('ok', 'Подложка возвращена: '.$plan->created_at->format('d.m.Y H:i').', '.$plan->changeLabel().'.');
     }
 
     /** Ластик: что нарисовано под точкой – выбрать линию или подпись щелчком. */

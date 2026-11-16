@@ -425,6 +425,10 @@ main.wide { max-width: none; padding: 0; display: flex; }
 .leaflet-tooltip.room-label { background: transparent; border: 0; box-shadow: none; color: var(--brand-700); font-weight: 600; font-size: 12px; padding: 0; }
 .leaflet-tooltip.room-label::before { display: none; }
 .room-pending span { display: inline-block; transform: translate(-50%, -50%); white-space: nowrap; padding: 1px 5px; border: 1px dashed var(--brand-700); border-radius: 9px; background: rgba(255, 255, 255, .85); color: var(--brand-700); font-size: 11px; font-weight: 600; cursor: pointer; }
+/* История подложек: строка версии и кнопка возврата в одну линию. */
+.plan-versions { list-style: none; margin: 8px 0 0; padding: 0; font-size: 13px; }
+.plan-versions li { display: flex; gap: 8px; align-items: center; justify-content: space-between; padding: 4px 0; border-top: 1px solid var(--line); }
+.plan-versions form { margin: 0; }
 /* Правка углов помещения: вершина тянется, светлая точка на середине стороны добавляет угол. */
 .corner-pt { background: #fff; border: 2px solid var(--brand-700); border-radius: 50%; box-sizing: border-box; cursor: move; }
 .corner-pt:hover { background: var(--brand-700); }

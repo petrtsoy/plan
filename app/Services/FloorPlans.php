@@ -334,6 +334,40 @@ class FloorPlans
         });
     }
 
+    /**
+     * Вернуть прежнюю версию подложки: чистка, ластик и обрезка не правят чертеж, а делают
+     * новую версию, поэтому вернуться можно к любой. Текущая подложка этажа – всегда последняя
+     * (`Floor::plan`), так что возврат – это копия прежней с той же картинкой, а не переключение
+     * флага: история остается целой. Пока масштаб не задан, координаты этажа – пиксели картинки,
+     * и расставленное переносится на пиксели возвращаемой (через доли листа: у версий одного
+     * исходника они общие). С масштабом метры те же, трогать нечего.
+     */
+    public function restore(Plan $plan): Plan
+    {
+        $floor = $plan->floor;
+        $now = $floor->plan;
+        if (! $now || $now->id === $plan->id) {
+            throw ValidationException::withMessages(['plan' => 'Эта подложка и так текущая.']);
+        }
+
+        return DB::transaction(function () use ($plan, $now, $floor) {
+            $new = $plan->replicate(['is_current', 'calibration']);
+            $new->fill([
+                'is_current' => true,
+                'user_id' => Auth::id(),
+                'calibration' => ($plan->calibration ?? []) + ['restored_from' => $plan->id],
+            ]);
+            $floor->plans()->update(['is_current' => false]);
+            $new->save();
+
+            if (! $new->isCalibrated() || ! $now->isCalibrated()) {
+                $this->remapFloor($floor->id, fn (float $x, float $y) => $this->fromSheet($new, ...$this->toSheet($now, $x, $y)));
+            }
+
+            return $new;
+        });
+    }
+
     private function cleanDir(Plan $plan): string
     {
         abort_unless($plan->source === PlanSource::Pdf, 422, 'Чистка – только для подложки из PDF.');

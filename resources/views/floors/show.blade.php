@@ -100,6 +100,24 @@
                     <div class="actions"><button class="btn primary">Загрузить</button></div>
                 </form>
             </details>
+            @if($plans->count() > 1)
+                <details class="side-block">
+                    <summary><strong>История подложек</strong></summary>
+                    <p class="small muted">Чистка, ластик и обрезка не правят чертеж, а делают новую версию. Вернуть можно любую: расставленное останется на своих местах.</p>
+                    <ul class="plan-versions">
+                        @foreach($plans as $version)
+                            <li>
+                                <span>{{ $version->created_at->format('d.m.Y H:i') }} – {{ $version->changeLabel() }}</span>
+                                @if($version->is_current)
+                                    <span class="badge ok">сейчас</span>
+                                @else
+                                    <form method="post" action="{{ route('plans.restore', $version) }}">@csrf<button class="btn link">Вернуть</button></form>
+                                @endif
+                            </li>
+                        @endforeach
+                    </ul>
+                </details>
+            @endif
             @if($floor->plan?->source === \App\Enums\PlanSource::Pdf)
                 <details class="side-block">
                     <summary><strong>Импорт из проекта</strong></summary>

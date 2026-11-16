@@ -85,6 +85,7 @@ Route::middleware(['auth', 'role'])->group(function () {
         Route::post('/plans/{plan}/clean', [FloorController::class, 'clean']);
         Route::post('/plans/{plan}/erase', [FloorController::class, 'erase'])->name('plans.erase');
         Route::post('/plans/{plan}/erase/at', [FloorController::class, 'eraseAt'])->name('plans.erase.at');
+        Route::post('/plans/{plan}/restore', [FloorController::class, 'restorePlan'])->name('plans.restore');
         Route::post('/plans/{plan}/outline', [FloorController::class, 'outline'])->name('plans.outline');
         Route::post('/floors/{floor}/rooms', [RoomController::class, 'store'])->name('floors.rooms.store');
         Route::put('/rooms/{room}', [RoomController::class, 'update'])->name('rooms.update');

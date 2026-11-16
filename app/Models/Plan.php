@@ -44,6 +44,26 @@ class Plan extends Model
         return $this->belongsTo(Floor::class);
     }
 
+    /** Чем версия отличается от загруженной: для списка прежних подложек. */
+    public function changeLabel(): string
+    {
+        $what = [];
+        if (isset($this->calibration['restored_from'])) {
+            $what[] = 'возврат прежней';
+        }
+        if (isset($this->calibration['cropped_from'])) {
+            $what[] = 'обрезана';
+        }
+        if ($this->clean['hide'] ?? null) {
+            $what[] = 'скрыто типов: '.count($this->clean['hide']);
+        }
+        if ($this->clean['erase'] ?? null) {
+            $what[] = 'стерто ластиком: '.(count($this->clean['erase']['items'] ?? []) + count($this->clean['erase']['rects'] ?? []));
+        }
+
+        return $what ? implode(', ', $what) : 'загружена';
+    }
+
     public function isCalibrated(): bool
     {
         return $this->meters_per_px !== null && $this->meters_per_px > 0;
