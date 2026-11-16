@@ -100,7 +100,7 @@
     var roomShapes = {};
     function drawRoom(r) {
         if (roomShapes[r.id]) roomsLayer.removeLayer(roomShapes[r.id]);
-        var shape = L.polygon(r.polygon.map(function (q) { return ll(q[0], q[1]); }), { color: '#0f766e', weight: 1.5, fillColor: '#14b8a6', fillOpacity: 0.08 });
+        var shape = L.polygon(r.polygon.map(function (q) { return ll(q[0], q[1]); }), { color: '#0f766e', weight: 1.5, dashArray: '5 4', fillColor: '#14b8a6', fillOpacity: 0.08 });
         shape.bindTooltip(esc(r.title), { permanent: true, direction: 'center', className: 'room-label' });
         shape.on('click', function (e) { if (!tool) { L.DomEvent.stop(e); showRoom(r); } });
         shape.room = r;

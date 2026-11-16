@@ -44,7 +44,7 @@
 
     var roomsLayer = L.layerGroup().addTo(map);
     F.rooms.forEach(function (r) {
-        var shape = L.polygon(poly(r.polygon), { color: '#0f766e', weight: 1.5, fillColor: '#14b8a6', fillOpacity: 0.06 });
+        var shape = L.polygon(poly(r.polygon), { color: '#0f766e', weight: 1.5, dashArray: '5 4', fillColor: '#14b8a6', fillOpacity: 0.06 });
         var specs = r.specs && r.specs.length ? '<br>' + esc(r.specs.join(', ')) : '';
         shape.bindTooltip('<b>' + esc(r.title) + '</b>' + (r.area ? ' · ' + r.area.toFixed(2) + ' м²' : '') + specs);
         shape.addTo(roomsLayer);
