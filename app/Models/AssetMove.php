@@ -35,12 +35,12 @@ class AssetMove extends Model
 
     public function fromRoom(): BelongsTo
     {
-        return $this->belongsTo(Room::class, 'from_room_id');
+        return $this->belongsTo(Room::class, 'from_room_id')->withTrashed();
     }
 
     public function toRoom(): BelongsTo
     {
-        return $this->belongsTo(Room::class, 'to_room_id');
+        return $this->belongsTo(Room::class, 'to_room_id')->withTrashed();
     }
 
     public function fromMol(): BelongsTo

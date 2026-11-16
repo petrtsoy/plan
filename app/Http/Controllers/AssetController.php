@@ -154,6 +154,25 @@ class AssetController extends Controller
      * расположение сохраняется, помещение у каждой – по новому месту (AssetMover::moveMany,
      * одна транзакция; смена филиала или МОЛ соберется в черновики актов по направлениям).
      */
+    /**
+     * Снять выделенное с плана: единицы остаются в филиале, но без этажа, помещения и точки –
+     * как "не расставлено". Через AssetMover, поэтому уход из помещения виден в истории.
+     */
+    public function unplaceMany(Request $request, Floor $floor, AssetMover $mover): JsonResponse
+    {
+        $data = $request->validate(['ids' => ['required', 'array', 'min:1', 'max:500'], 'ids.*' => ['integer']]);
+        $assets = Asset::whereIn('id', $data['ids'])->where('floor_id', $floor->id)->get();
+        abort_if($assets->isEmpty(), 422, 'Выделенные единицы не найдены на этом этаже.');
+        $mover->moveMany($assets, ['room_id' => null, 'floor_id' => null], 'Снято с плана');
+
+        return response()->json([
+            'ok' => true,
+            'ids' => $assets->pluck('id'),
+            'unplaced' => $assets->map(fn (Asset $a) => ['id' => $a->id, 'title' => $a->title, 'inv' => $a->inventory_number]),
+            'message' => 'Снято с плана единиц: '.$assets->count().'. Их можно поставить заново.',
+        ]);
+    }
+
     public function placeMany(Request $request, Floor $floor, AssetMover $mover, FloorPlans $plans): JsonResponse
     {
         $data = $request->validate([

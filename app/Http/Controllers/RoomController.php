@@ -2,7 +2,9 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\Asset;
 use App\Models\Floor;
+use App\Models\LayoutItem;
 use App\Models\Room;
 use App\Services\Specs;
 use Illuminate\Http\JsonResponse;
@@ -29,6 +31,23 @@ class RoomController extends Controller
         $room->update($data);
 
         return response()->json($this->payload($room) + ['message' => 'Сохранено.']);
+    }
+
+    /**
+     * Убрать помещение с плана: пока в нем что-то стоит – нельзя, иначе единица осталась бы
+     * без места. Удаление мягкое: история перемещений и инвентаризации его еще показывает.
+     */
+    public function destroy(Room $room): JsonResponse
+    {
+        $assets = Asset::where('room_id', $room->id)->count();
+        $items = LayoutItem::where('room_id', $room->id)->count();
+        abort_if($assets > 0, 422, "В помещении стоит единиц: {$assets}. Сначала перенесите их или снимите с плана.");
+        abort_if($items > 0, 422, "В помещении есть позиции вариантов расстановки: {$items}. Сначала уберите их в варианте.");
+        // Кабинет it.his.kz у номера один: убранное помещение держать его не должно.
+        $room->forceFill(['it_location_id' => null])->save();
+        $room->delete();
+
+        return response()->json(['ok' => true, 'message' => "Помещение \"{$room->title}\" убрано с плана."]);
     }
 
     private function payload(Room $room): array

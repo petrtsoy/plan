@@ -31,12 +31,12 @@ class InventoryItem extends Model
 
     public function expectedRoom(): BelongsTo
     {
-        return $this->belongsTo(Room::class, 'expected_room_id');
+        return $this->belongsTo(Room::class, 'expected_room_id')->withTrashed();
     }
 
     public function foundRoom(): BelongsTo
     {
-        return $this->belongsTo(Room::class, 'found_room_id');
+        return $this->belongsTo(Room::class, 'found_room_id')->withTrashed();
     }
 
     public function expectedMol(): BelongsTo

@@ -6,11 +6,13 @@ use App\Enums\ZoneKind;
 use App\Models\Concerns\Auditable;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\SoftDeletes;
 
 /** Область на этаже поверх помещений: отдел, чистая зона, радиационный контроль... */
 class Zone extends Model
 {
     use Auditable;
+    use SoftDeletes;
 
     public string $auditType = 'zone';
 

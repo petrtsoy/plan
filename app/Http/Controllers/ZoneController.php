@@ -29,6 +29,14 @@ class ZoneController extends Controller
         return response()->json(['ok' => true, 'zone' => FloorController::zoneData($zone->fresh()), 'message' => 'Сохранено.']);
     }
 
+    /** Убрать зону с плана (мягко: в журнале остается). */
+    public function destroy(Zone $zone): JsonResponse
+    {
+        $zone->delete();
+
+        return response()->json(['ok' => true, 'message' => "Зона \"{$zone->name}\" убрана с плана."]);
+    }
+
     private function validated(Request $request, bool $creating): array
     {
         $required = $creating ? 'required' : 'sometimes';

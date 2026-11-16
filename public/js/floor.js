@@ -200,6 +200,16 @@
         return Object.keys(selected).map(function (id) { return markers[id] && markers[id].asset; }).filter(Boolean);
     }
     function repaint(list) { list.forEach(function (a) { if (markers[a.id]) markers[a.id].setIcon(pinIcon(a)); }); }
+    /** Снятые с плана: точки убираем, сами единицы – обратно в список "не расставлено". */
+    function unplaced(res) {
+        res.ids.forEach(function (id) {
+            if (markers[id]) { map.removeLayer(markers[id]); delete markers[id]; }
+            delete selected[id];
+        });
+        F.assets = F.assets.filter(function (a) { return res.ids.indexOf(a.id) < 0; });
+        F.unplaced = (res.unplaced || []).concat(F.unplaced || []);
+        toast(res.message);
+    }
     function showSelectedWhereThey() { selectedList().forEach(function (a) { markers[a.id].setLatLng(ll(a.x, a.y)); }); }
     function toggleSelected(a) {
         if (selected[a.id]) delete selected[a.id]; else selected[a.id] = true;
@@ -237,12 +247,20 @@
             (F.canAssets
                 ? '<p class="small muted">Перетащите любую выделенную точку – поедут все. Помещение у каждой определится по новому месту, смена помещения или филиала – с историей.</p>' +
                   '<label>Повернуть все, °</label><input type="number" id="sel-rot" step="15" min="0" max="359" value="0">' +
-                  '<div class="actions"><button class="btn" id="sel-turn">Повернуть</button><button class="btn link" id="sel-no">Снять выделение</button></div>'
+                  '<div class="actions"><button class="btn" id="sel-turn">Повернуть</button>' +
+                  '<button class="btn danger" id="sel-off">Снять с плана</button>' +
+                  '<button class="btn link" id="sel-no">Снять выделение</button></div>'
                 : '<div class="actions"><button class="btn link" id="sel-no">Снять выделение</button></div>') +
             '</div>';
         document.getElementById('sel-no').onclick = function () { clearSelection(); selectionPanel(); };
         var turn = document.getElementById('sel-turn');
         if (turn) turn.onclick = function () { moveSelected(0, 0, parseFloat(val('sel-rot').replace(',', '.')) || 0); };
+        var off = document.getElementById('sel-off');
+        if (off) off.onclick = function () {
+            if (!confirm('Снять с плана единиц: ' + list.length + '? Они останутся в филиале как не расставленные.')) return;
+            send(F.urls.unplace, 'POST', { ids: list.map(function (a) { return a.id; }) })
+                .then(function (res) { unplaced(res); selectionPanel(); });
+        };
     }
 
     // Рамка выделения: инструмент "Выделить" (на время него карту не тянем).
@@ -752,6 +770,7 @@
                 (r.id && r.polygon ? '<button class="btn" id="rm-corners">Поправить углы</button>' : '') +
                 (r.id ? '<button class="btn" id="rm-shape">Обвести заново</button>' : '') +
                 (r.id && F.urls.outline ? '<button class="btn" id="rm-wand">По стенам</button>' : '') +
+                (r.id ? '<button class="btn danger" id="rm-del">Убрать с плана</button>' : '') +
                 '<button class="btn link" id="rm-no">' + (r.id ? 'Закрыть' : 'Отмена') + '</button></div>' : '') +
             '</div>';
         if (!edit) return;
@@ -764,6 +783,18 @@
                 responsible_id: val('rm-responsible') || null,
                 it_location_id: val('rm-it') || null,
                 specs: specsValues(), polygon: r.polygon
+            });
+        };
+        var del = document.getElementById('rm-del');
+        if (del) del.onclick = function () {
+            if (!confirm('Убрать ' + r.title + ' с плана? Контур и свойства пропадут, история и акты останутся.')) return;
+            send(F.urls.room.replace('__ID__', r.id), 'DELETE').then(function (res) {
+                if (roomShapes[r.id]) { roomsLayer.removeLayer(roomShapes[r.id]); delete roomShapes[r.id]; }
+                if (pendingMarkers[r.id]) { roomsLayer.removeLayer(pendingMarkers[r.id]); delete pendingMarkers[r.id]; }
+                F.rooms = F.rooms.filter(function (o) { return o.id !== r.id; });
+                F.pending = (F.pending || []).filter(function (o) { return o.id !== r.id; });
+                stopTool();
+                toast(res.message);
             });
         };
         var cn = document.getElementById('rm-corners');
@@ -925,6 +956,7 @@
             '<label>Заметки</label><input id="zn-notes" value="' + esc(z.notes || '') + '"' + off + '>' +
             (edit ? '<div class="actions"><button class="btn primary" id="zn-ok">Сохранить</button>' +
                 (z.id ? '<button class="btn" id="zn-shape">Обвести заново</button>' : '') +
+                (z.id ? '<button class="btn danger" id="zn-del">Убрать с плана</button>' : '') +
                 '<button class="btn link" id="zn-no">' + (z.id ? 'Закрыть' : 'Отмена') + '</button></div>' : '') +
             '</div>';
         if (!edit) return;
@@ -942,6 +974,16 @@
         };
         var sh = document.getElementById('zn-shape');
         if (sh) sh.onclick = function () { startTool('zone'); zoneReshape = z; say('Обведите зону заново. Esc – отмена.'); };
+        var zdel = document.getElementById('zn-del');
+        if (zdel) zdel.onclick = function () {
+            if (!confirm('Убрать зону ' + z.name + ' с плана?')) return;
+            send(F.urls.zone.replace('__ID__', z.id), 'DELETE').then(function (res) {
+                if (zoneShapes[z.id]) { zonesLayer.removeLayer(zoneShapes[z.id]); delete zoneShapes[z.id]; }
+                F.zones = (F.zones || []).filter(function (o) { return o.id !== z.id; });
+                stopTool();
+                toast(res.message);
+            });
+        };
     }
     function colorOfKind(kind) {
         var found = (F.zoneKinds || []).filter(function (k) { return k.value === kind; })[0];
@@ -967,10 +1009,16 @@
             (F.canAssets ? '<label>Поворот, °</label><input type="number" id="as-rot" step="15" min="0" max="359" value="' + (a.rotation || 0) + '">' : '') +
             '<div class="actions">' +
             (F.canAssets ? '<button class="btn" id="as-turn">Повернуть</button>' : '') +
+            (F.canAssets ? '<button class="btn danger" id="as-off">Снять с плана</button>' : '') +
             '<a class="btn" href="' + a.url + '">Карточка</a><button class="btn link" id="as-no">Закрыть</button></div>' +
             (F.canAssets ? '<p class="small muted">Переставить – перетащите точку. В другое помещение – с записью в истории. Ctrl и щелчок – выделить несколько и перенести разом.</p>' : '') +
             '</div>';
         document.getElementById('as-no').onclick = stopTool;
+        var drop = document.getElementById('as-off');
+        if (drop) drop.onclick = function () {
+            if (!confirm('Снять ' + a.title + ' с плана? Единица останется в филиале как не расставленная.')) return;
+            send(F.urls.unplace, 'POST', { ids: [a.id] }).then(function (res) { unplaced(res); stopTool(); });
+        };
         var turn = document.getElementById('as-turn');
         if (turn) turn.onclick = function () {
             var deg = parseFloat(val('as-rot').replace(',', '.')) || 0;

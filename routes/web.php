@@ -89,8 +89,10 @@ Route::middleware(['auth', 'role'])->group(function () {
         Route::post('/plans/{plan}/outline', [FloorController::class, 'outline'])->name('plans.outline');
         Route::post('/floors/{floor}/rooms', [RoomController::class, 'store'])->name('floors.rooms.store');
         Route::put('/rooms/{room}', [RoomController::class, 'update'])->name('rooms.update');
+        Route::delete('/rooms/{room}', [RoomController::class, 'destroy'])->name('rooms.destroy');
         Route::post('/floors/{floor}/zones', [ZoneController::class, 'store'])->name('floors.zones.store');
         Route::put('/zones/{zone}', [ZoneController::class, 'update'])->name('zones.update');
+        Route::delete('/zones/{zone}', [ZoneController::class, 'destroy'])->name('zones.destroy');
         Route::post('/floors/{floor}/import', [FloorController::class, 'import'])->name('floors.import');
 
         // Варианты расстановки и проекты – там же, где здания и помещения.
@@ -116,6 +118,7 @@ Route::middleware(['auth', 'role'])->group(function () {
         Route::post('/floors/{floor}/assets', [AssetController::class, 'store'])->name('floors.assets.store');
         Route::post('/assets/{asset}/place', [AssetController::class, 'place'])->name('assets.place');
         Route::post('/floors/{floor}/assets/place-many', [AssetController::class, 'placeMany'])->name('floors.assets.place-many');
+        Route::post('/floors/{floor}/assets/unplace', [AssetController::class, 'unplaceMany'])->name('floors.assets.unplace');
         Route::put('/assets/{asset}', [AssetController::class, 'update'])->name('assets.update');
         Route::post('/assets/{asset}/assign', [AssetController::class, 'assign'])->name('assets.assign');
         Route::post('/assets/{asset}/files', [FileController::class, 'store'])->name('assets.files.store');

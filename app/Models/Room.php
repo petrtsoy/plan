@@ -7,11 +7,15 @@ use App\Services\Geometry;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\SoftDeletes;
 
 /** Помещение: контур на этаже, назначение, отделение и инженерные свойства (Specs). */
 class Room extends Model
 {
     use Auditable;
+
+    // Убранное с плана помещение пропадает из списков, но история его еще показывает.
+    use SoftDeletes;
 
     public string $auditType = 'room';
 

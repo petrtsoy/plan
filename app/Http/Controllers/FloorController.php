@@ -92,6 +92,7 @@ class FloorController extends Controller
                     'assets' => route('floors.assets.store', $floor),
                     'place' => route('assets.place', ['asset' => '__ID__']),
                     'placeMany' => route('floors.assets.place-many', $floor),
+                    'unplace' => route('floors.assets.unplace', $floor),
                     'import' => route('floors.import', $floor),
                 ],
             ],
