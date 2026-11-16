@@ -1,0 +1,181 @@
+{
+    "_": "Ответы OData по сущностям, как их отдает боевая база: справочник ОС отдельно, учетные поля – регистрами сведений, подчиненными регистратору ({Recorder, RecordSet}). Имена реквизитов здесь настоящие (config/onec.php), значения выдуманные.",
+
+    "Catalog_ОсновныеСредства": [
+        {
+            "Ref_Key": "a-1",
+            "Code": "778    ",
+            "Description": "Анализатор AU480",
+            "IsFolder": false,
+            "Parent_Key": "00000000-0000-0000-0000-000000000000",
+            "DeletionMark": false,
+            "НаименованиеПолное": "Анализатор биохимический AU480 ",
+            "ЗаводскойНомер": "SN-480-17"
+        },
+        {
+            "Ref_Key": "a-9",
+            "Code": "912",
+            "Description": "Микроскоп Levenhuk 740T",
+            "IsFolder": false,
+            "Parent_Key": "00000000-0000-0000-0000-000000000000",
+            "DeletionMark": false,
+            "НаименованиеПолное": "",
+            "ЗаводскойНомер": ""
+        }
+    ],
+
+    "InformationRegister_ПервоначальныеСведенияОСБухгалтерскийУчет": [
+        {
+            "Recorder": "doc-1",
+            "Recorder_Type": "StandardODATA.Document_ПринятиеКУчетуОС",
+            "RecordSet": [
+                {
+                    "Period": "2019-01-31T00:00:00",
+                    "LineNumber": "1",
+                    "Active": true,
+                    "ОсновноеСредство_Key": "a-1",
+                    "ИнвентарныйНомер": "000000416",
+                    "ПервоначальнаяСтоимость": 45019
+                },
+                {
+                    "Period": "2020-01-01T00:00:00",
+                    "LineNumber": "2",
+                    "Active": true,
+                    "ОсновноеСредство_Key": "a-9",
+                    "ИнвентарныйНомер": "000001006 ",
+                    "ПервоначальнаяСтоимость": 27780
+                }
+            ]
+        },
+        {
+            "Recorder": "doc-2",
+            "Recorder_Type": "StandardODATA.Document_ОперацияБух",
+            "RecordSet": [
+                {
+                    "Period": "2024-05-20T00:00:00",
+                    "LineNumber": "1",
+                    "Active": true,
+                    "ОсновноеСредство_Key": "a-1",
+                    "ИнвентарныйНомер": "000000777",
+                    "ПервоначальнаяСтоимость": 51200.5
+                }
+            ]
+        }
+    ],
+
+    "InformationRegister_МестонахождениеОСБухгалтерскийУчет": [
+        {
+            "Recorder": "doc-3",
+            "Recorder_Type": "StandardODATA.Document_ПеремещениеОС",
+            "RecordSet": [
+                {
+                    "Period": "2018-03-01T00:00:00",
+                    "LineNumber": "1",
+                    "Active": true,
+                    "ОсновноеСредство_Key": "a-1",
+                    "МОЛ_Key": "p-9",
+                    "Местонахождение_Key": "dep-shymkent"
+                }
+            ]
+        },
+        {
+            "Recorder": "doc-4",
+            "Recorder_Type": "StandardODATA.Document_ПеремещениеОС",
+            "RecordSet": [
+                {
+                    "Period": "2024-11-12T00:00:00",
+                    "LineNumber": "1",
+                    "Active": true,
+                    "ОсновноеСредство_Key": "a-1",
+                    "МОЛ_Key": "p-1",
+                    "Местонахождение_Key": "dep-astana"
+                },
+                {
+                    "Period": "2024-11-12T00:00:00",
+                    "LineNumber": "2",
+                    "Active": true,
+                    "ОсновноеСредство_Key": "a-9",
+                    "МОЛ_Key": "p-1",
+                    "Местонахождение_Key": "dep-astana"
+                }
+            ]
+        }
+    ],
+
+    "InformationRegister_СостоянияОСОрганизаций": [
+        {
+            "Recorder": "doc-5",
+            "Recorder_Type": "StandardODATA.Document_ПоступлениеТоваровУслуг",
+            "RecordSet": [
+                {
+                    "Period": "2018-12-01T00:00:00",
+                    "LineNumber": "1",
+                    "Active": true,
+                    "ОсновноеСредство_Key": "a-1",
+                    "ДатаСостояния": "2018-12-01T00:00:00",
+                    "Состояние": "Поступило"
+                }
+            ]
+        },
+        {
+            "Recorder": "doc-6",
+            "Recorder_Type": "StandardODATA.Document_ПринятиеКУчетуОС",
+            "RecordSet": [
+                {
+                    "Period": "2019-01-31T00:00:00",
+                    "LineNumber": "1",
+                    "Active": true,
+                    "ОсновноеСредство_Key": "a-1",
+                    "ДатаСостояния": "2019-01-31T00:00:00",
+                    "Состояние": "ПринятоКУчету"
+                },
+                {
+                    "Period": "2020-01-01T00:00:00",
+                    "LineNumber": "2",
+                    "Active": true,
+                    "ОсновноеСредство_Key": "a-9",
+                    "ДатаСостояния": "2020-01-01T00:00:00",
+                    "Состояние": "ПринятоКУчету"
+                }
+            ]
+        },
+        {
+            "Recorder": "doc-7",
+            "Recorder_Type": "StandardODATA.Document_ИзменениеСостоянияОС",
+            "RecordSet": [
+                {
+                    "Period": "2022-07-15T00:00:00",
+                    "LineNumber": "1",
+                    "Active": true,
+                    "ОсновноеСредство_Key": "a-1",
+                    "ДатаСостояния": "2022-07-15T00:00:00",
+                    "Состояние": "ПринятоКУчету"
+                }
+            ]
+        },
+        {
+            "Recorder": "doc-8",
+            "Recorder_Type": "StandardODATA.Document_СписаниеОС",
+            "RecordSet": [
+                {
+                    "Period": "2024-09-26T12:35:07",
+                    "LineNumber": "1",
+                    "Active": true,
+                    "ОсновноеСредство_Key": "a-9",
+                    "ДатаСостояния": "2024-09-26T12:35:07",
+                    "Состояние": "СнятоСУчета"
+                }
+            ]
+        }
+    ],
+
+    "Catalog_ПодразделенияОрганизаций": [
+        { "Ref_Key": "dep-astana", "Description": "Астана" },
+        { "Ref_Key": "dep-shymkent", "Description": "Шымкент" }
+    ],
+
+    "Catalog_ФизическиеЛица": [
+        { "Ref_Key": "p-1", "Description": "Сабитова Гульнара Каиржановна " },
+        { "Ref_Key": "p-9", "Description": "Иванов Иван Иванович" }
+    ]
+}

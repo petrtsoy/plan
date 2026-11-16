@@ -59,6 +59,9 @@ class OnecSync
 
         $folders = $this->folders($rows, $fields);
         $live = Client::live($rows);
+        // Инвентарный номер, стоимость, подразделение, МОЛ и списание лежат не в справочнике,
+        // а в регистрах сведений – отдельными запросами, последним срезом на единицу.
+        $slices = $this->slices();
 
         $offices = Office::whereNotNull('onec_department_ref')->pluck('id', 'onec_department_ref');
         $assets = Asset::with(['mol', 'office', 'room', 'category'])->get();
@@ -77,7 +80,7 @@ class OnecSync
         $seen = [];
 
         foreach ($live as $row) {
-            $card = $this->card($row, $fields);
+            $card = $this->card($row, $fields, $slices);
 
             if ($card['ref'] === '' || $this->skipped($row, $fields, $folders)) {
                 $report['skipped']++;
@@ -288,8 +291,12 @@ class OnecSync
         ], fn ($v) => $v !== null);
     }
 
-    /** Карточка 1С в наших именах: строковое – через trim, пустая дата – null. */
-    private function card(array $row, array $fields): array
+    /**
+     * Карточка 1С в наших именах: строковое – через trim, пустая дата – null.
+     *
+     * @param  array<string, array<string, mixed>>  $slices последний срез регистров по ключу ОС
+     */
+    private function card(array $row, array $fields, array $slices = []): array
     {
         $raw = function (string $key) use ($row, $fields) {
             $name = $fields[$key] ?? '';
@@ -299,22 +306,246 @@ class OnecSync
         // Хвостовые пробелы: Code и прочие строки фиксированной длины приезжают как "778    ".
         $text = fn (string $key) => ($v = $raw($key)) === null ? null : (trim((string) $v) ?: null);
         $price = $raw('price');
+        $ref = trim((string) ($raw('ref') ?? ''));
+        // Реквизит справочника главнее: если он в базе есть и задан в config/onec.php, берем
+        // его. Там, где такого реквизита нет, значение приходит из регистра сведений.
+        $slice = $slices[$ref] ?? [];
+        $own = fn (string $key, mixed $value) => $value ?? ($slice[$key] ?? null);
 
         return [
-            'ref' => trim((string) ($raw('ref') ?? '')),
+            'ref' => $ref,
             'code' => $text('code'),
             'name' => $text('accounting_name') ?? $text('name') ?? 'Основное средство',
             'accounting_name' => $text('accounting_name') ?? $text('name'),
-            'inventory_number' => $text('inventory_number'),
+            'inventory_number' => $own('inventory_number', $text('inventory_number')),
             'serial_number' => $text('serial_number'),
-            'price' => $price === null || $price === '' ? null : (float) $price,
-            'commissioned_at' => self::date($raw('commissioned_at')),
-            'department_ref' => self::ref($raw('department_ref')),
-            'department_name' => $text('department_name'),
-            'mol_name' => $text('mol_name'),
-            'written_off' => (bool) $raw('written_off'),
-            'written_off_at' => self::date($raw('written_off_at')),
+            'price' => $own('price', $price === null || $price === '' ? null : (float) $price),
+            'commissioned_at' => $own('commissioned_at', self::date($raw('commissioned_at'))),
+            'department_ref' => $own('department_ref', self::ref($raw('department_ref'))),
+            'department_name' => $own('department_name', $text('department_name')),
+            'mol_name' => $own('mol_name', $text('mol_name')),
+            'written_off' => (bool) $own('written_off', $raw('written_off') ? true : null),
+            'written_off_at' => $own('written_off_at', self::date($raw('written_off_at'))),
         ];
+    }
+
+
+    /**
+     * Учетные поля из регистров сведений: ключ ОС => значения последнего среза.
+     *
+     * Среза средствами 1С у этих регистров нет (они подчинены регистратору, сущности
+     * ..._SliceLast в публикации не существует), поэтому регистр читаем целиком и считаем
+     * срез у себя. Объем маленький – тысячи строк, секунды на запрос.
+     *
+     * @return array<string, array<string, mixed>>
+     */
+    private function slices(): array
+    {
+        $cards = [];
+
+        foreach ((array) config('onec.registers', []) as $kind => $cfg) {
+            $rows = $this->records((array) $cfg);
+            if ($rows === []) {
+                continue;
+            }
+            // Состояние – не просто последнее значение: из него еще и дата принятия к учету.
+            $slice = $kind === 'state'
+                ? $this->stateSlice($rows, (array) $cfg)
+                : $this->lastSlice($rows, (array) $cfg);
+
+            foreach ($slice as $ref => $values) {
+                $cards[$ref] = $values + ($cards[$ref] ?? []);
+            }
+        }
+
+        return $this->resolveNames($cards);
+    }
+
+    /**
+     * Строки регистра. Регистр, подчиненный регистратору, OData отдает наборами записей
+     * ({Recorder, RecordSet: [строки]}); независимый – строками сразу.
+     *
+     * @return array<int, array<string, mixed>>
+     */
+    private function records(array $cfg): array
+    {
+        $set = trim((string) ($cfg['set'] ?? ''));
+        if ($set === '' || trim((string) ($cfg['asset'] ?? '')) === '') {
+            return [];
+        }
+
+        $rows = [];
+        // Не getAll: там принудительный $orderby=Ref_Key, а у регистра сведений Ref_Key нет.
+        foreach ($this->client()->get($set) as $row) {
+            $records = is_array($row['RecordSet'] ?? null) ? $row['RecordSet'] : [$row];
+            foreach ($records as $record) {
+                if (is_array($record)) {
+                    $rows[] = $record;
+                }
+            }
+        }
+
+        return $rows;
+    }
+
+    /**
+     * Последняя запись регистра на единицу – это и есть текущее значение.
+     *
+     * @param  array<int, array<string, mixed>>  $rows
+     * @return array<string, array<string, mixed>>
+     */
+    private function lastSlice(array $rows, array $cfg): array
+    {
+        $asset = (string) $cfg['asset'];
+        $period = (string) ($cfg['period'] ?? 'Period');
+        $fields = array_filter((array) ($cfg['fields'] ?? []), fn ($name) => trim((string) $name) !== '');
+        if ($fields === []) {
+            return [];
+        }
+
+        $last = [];
+        foreach ($rows as $row) {
+            $ref = self::ref($row[$asset] ?? null);
+            // Active = false – запись выключена, в срезе ее нет.
+            if ($ref === null || ! ($row['Active'] ?? true)) {
+                continue;
+            }
+            $at = (string) ($row[$period] ?? '');
+            if (isset($last[$ref]) && $at < $last[$ref]['at']) {
+                continue;
+            }
+            $last[$ref] = ['at' => $at, 'row' => $row];
+        }
+
+        $slices = [];
+        foreach ($last as $ref => $one) {
+            $values = [];
+            foreach ($fields as $key => $name) {
+                $values[$key] = self::value($key, $one['row'][$name] ?? null);
+            }
+            $slices[$ref] = array_filter($values, fn ($v) => $v !== null);
+        }
+
+        return $slices;
+    }
+
+    /**
+     * Регистр состояний: дата принятия к учету и списание.
+     *
+     * Дата принятия – самое первое принятие к учету: единицу могли снять и поставить снова, а
+     * в карточке интересно, с какого дня она на учете. Списание – только если ПОСЛЕДНЕЕ
+     * состояние снятое: снятую и снова принятую списанной не считаем.
+     *
+     * @param  array<int, array<string, mixed>>  $rows
+     * @return array<string, array<string, mixed>>
+     */
+    private function stateSlice(array $rows, array $cfg): array
+    {
+        $asset = (string) $cfg['asset'];
+        $period = (string) ($cfg['period'] ?? 'Period');
+        $stateField = trim((string) ($cfg['fields']['state'] ?? ''));
+        $atField = trim((string) ($cfg['fields']['state_at'] ?? ''));
+        $commissioned = trim((string) ($cfg['values']['commissioned'] ?? ''));
+        $writtenOff = trim((string) ($cfg['values']['written_off'] ?? ''));
+        if ($stateField === '') {
+            return [];
+        }
+
+        $cards = [];
+        foreach ($rows as $row) {
+            $ref = self::ref($row[$asset] ?? null);
+            if ($ref === null || ! ($row['Active'] ?? true)) {
+                continue;
+            }
+            $at = (string) ($row[$period] ?? '');
+            $state = trim((string) ($row[$stateField] ?? ''));
+            $date = ($atField === '' ? null : self::date($row[$atField] ?? null)) ?? self::date($at);
+            $card = $cards[$ref] ?? ['at' => '', 'state' => '', 'state_at' => null, 'commissioned_at' => null];
+
+            if ($commissioned !== '' && $state === $commissioned && $date !== null
+                && ($card['commissioned_at'] === null || $date < $card['commissioned_at'])) {
+                $card['commissioned_at'] = $date;
+            }
+            if ($at >= $card['at']) {
+                $card['at'] = $at;
+                $card['state'] = $state;
+                $card['state_at'] = $date;
+            }
+
+            $cards[$ref] = $card;
+        }
+
+        $slices = [];
+        foreach ($cards as $ref => $card) {
+            $off = $writtenOff !== '' && $card['state'] === $writtenOff;
+            $slices[$ref] = array_filter([
+                'commissioned_at' => $card['commissioned_at'],
+                'written_off' => $off ?: null,
+                'written_off_at' => $off ? $card['state_at'] : null,
+            ], fn ($v) => $v !== null);
+        }
+
+        return $slices;
+    }
+
+    /**
+     * Расшифровать ссылки из регистров названиями (подразделение, МОЛ). Нерасшифрованная
+     * ссылка не беда: филиал сопоставляется по ключу подразделения, а не по названию.
+     *
+     * @param  array<string, array<string, mixed>>  $cards
+     * @return array<string, array<string, mixed>>
+     */
+    private function resolveNames(array $cards): array
+    {
+        foreach ((array) config('onec.names', []) as $kind => $cfg) {
+            $set = trim((string) ($cfg['set'] ?? ''));
+            $field = trim((string) ($cfg['field'] ?? ''));
+            $refKey = $kind.'_ref';
+            $nameKey = $kind.'_name';
+
+            $needed = [];
+            foreach ($cards as $card) {
+                if (isset($card[$refKey])) {
+                    $needed[(string) $card[$refKey]] = true;
+                }
+            }
+            if ($set === '' || $field === '' || $needed === []) {
+                continue;
+            }
+
+            $names = [];
+            foreach ($this->client()->getAll($set, ['select' => 'Ref_Key,'.$field]) as $row) {
+                $ref = self::ref($row['Ref_Key'] ?? null);
+                if ($ref !== null && isset($needed[$ref])) {
+                    $names[$ref] = trim((string) ($row[$field] ?? '')) ?: null;
+                }
+            }
+
+            foreach ($cards as $ref => $card) {
+                $name = $names[(string) ($card[$refKey] ?? '')] ?? null;
+                if ($name !== null) {
+                    $cards[$ref][$nameKey] = $name;
+                }
+            }
+        }
+
+        return $cards;
+    }
+
+    /** Значение регистра в наших типах – по имени нашего поля. */
+    private static function value(string $key, mixed $raw): mixed
+    {
+        if ($key === 'price') {
+            return $raw === null || $raw === '' ? null : (float) $raw;
+        }
+        if (str_ends_with($key, '_ref')) {
+            return self::ref($raw);
+        }
+        if (str_ends_with($key, '_at')) {
+            return self::date($raw);
+        }
+
+        return $raw === null ? null : (trim((string) $raw) ?: null);
     }
 
     /** Пустую дату 1С отдает началом эпохи – для нас это "не заполнено". */

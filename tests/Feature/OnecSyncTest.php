@@ -353,4 +353,121 @@ class OnecSyncTest extends TestCase
 
         $this->get('/onec')->assertOk()->assertSee('Не заданы реквизиты 1С');
     }
+
+    /**
+     * Схема боевой базы: учетных полей в справочнике ОС нет. Инвентарный номер и стоимость
+     * приходят регистром ПервоначальныеСведенияОС..., подразделение и МОЛ – регистром
+     * МестонахождениеОС..., дата принятия к учету и списание – регистром СостоянияОС...
+     * Имена здесь настоящие, как в config/onec.php; значения – из фикстуры.
+     */
+    private const CATALOG_FIELDS = [
+        'ref' => 'Ref_Key',
+        'code' => 'Code',
+        'name' => 'Description',
+        'folder' => 'IsFolder',
+        'parent' => 'Parent_Key',
+        'deleted' => 'DeletionMark',
+        'accounting_name' => 'НаименованиеПолное',
+        'serial_number' => 'ЗаводскойНомер',
+        'inventory_number' => '',
+        'price' => '',
+        'commissioned_at' => '',
+        'department_ref' => '',
+        'department_name' => '',
+        'mol_name' => '',
+        'written_off' => '',
+        'written_off_at' => '',
+    ];
+
+    /** Клиент, отвечающий на каждую сущность своим: справочник, регистры, справочники названий. */
+    private function onecRegisters(): Client
+    {
+        $byEntity = json_decode(file_get_contents(__DIR__.'/../Fixtures/onec_registers.json'), true);
+
+        $client = new class('http://1c.local', 'u', 'p', $byEntity) extends Client
+        {
+            /** @var array<int, string> сущности, которые спросили */
+            public array $asked = [];
+
+            public function __construct(string $base, string $user, string $pass, public array $byEntity = [])
+            {
+                parent::__construct($base, $user, $pass);
+            }
+
+            public function getAll(string $entity, array $query = [], int $pageSize = self::DEFAULT_PAGE_SIZE): array
+            {
+                $this->asked[] = $entity;
+
+                return $this->byEntity[$entity] ?? [];
+            }
+
+            public function get(string $entity, array $query = []): array
+            {
+                $this->asked[] = $entity;
+
+                return $this->byEntity[$entity] ?? [];
+            }
+        };
+
+        config(['onec.fields' => self::CATALOG_FIELDS]);
+        $this->app->instance(Client::class, $client);
+
+        return $client;
+    }
+
+    public function test_учетные_поля_приходят_из_регистров_сведений(): void
+    {
+        $office = $this->office('dep-astana');
+        $client = $this->onecRegisters();
+
+        $report = app(OnecSync::class)->run();
+
+        $this->assertSame(2, $report['applied']['created']);
+
+        $analyzer = Asset::where('accounting_ref', 'a-1')->sole();
+        // Последняя запись регистра и есть текущее значение: инвентарный номер и стоимость
+        // из записи 2024 года, а не из первой, 2019-го.
+        $this->assertSame('000000777', $analyzer->inventory_number);
+        $this->assertSame('51200.50', $analyzer->price);
+        // Дата принятия к учету – ПЕРВОЕ принятие: в фикстуре их два, 2019 и 2022.
+        $this->assertSame('2019-01-31', $analyzer->commissioned_at->toDateString());
+        // Филиал – по ключу подразделения из регистра местонахождения (тоже последнему:
+        // в 2018-м единица была в Шымкенте).
+        $this->assertSame($office->id, $analyzer->office_id);
+        $this->assertSame('Астана', $analyzer->department);
+        $this->assertSame(AssetStatus::InUse, $analyzer->status);
+
+        // Последнее состояние – СнятоСУчета: единица заводится сразу списанной, с датой.
+        $microscope = Asset::where('accounting_ref', 'a-9')->sole();
+        $this->assertSame('2024-09-26', $microscope->written_off_at->toDateString());
+        $this->assertSame(AssetStatus::WrittenOff, $microscope->status);
+        $this->assertSame('000001006', $microscope->inventory_number);
+
+        // Регистры читаются целиком и по одному запросу: среза средствами 1С у них нет.
+        $this->assertContains('InformationRegister_МестонахождениеОСБухгалтерскийУчет', $client->asked);
+        $this->assertContains('Catalog_ФизическиеЛица', $client->asked);
+    }
+
+    public function test_мол_из_регистра_попадает_в_расхождение_по_месту(): void
+    {
+        $office = $this->office('dep-astana');
+        $mol = Employee::create(['hr_id' => 71, 'full_name' => 'Сидоров Сидор Сидорович']);
+        $asset = Asset::create([
+            'category_id' => Category::where('name', 'Анализаторы')->value('id'),
+            'office_id' => $office->id,
+            'mol_id' => $mol->id,
+            'accounting_ref' => 'a-1',
+            'name' => 'Анализатор в лаборатории',
+        ]);
+
+        $this->onecRegisters();
+        $report = app(OnecSync::class)->run();
+
+        $diff = collect($report['placement'])->firstWhere('asset.id', $asset->id);
+        $this->assertNotNull($diff);
+        // МОЛ 1С отдает ссылкой – имя берется из справочника физических лиц, с trim.
+        $this->assertSame('Сабитова Гульнара Каиржановна', $diff['diff']['МОЛ'][1]);
+        // И остается расхождением: МОЛ и место меняет только AssetMover.
+        $this->assertSame($mol->id, $asset->fresh()->mol_id);
+    }
 }
