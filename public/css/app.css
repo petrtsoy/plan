@@ -425,6 +425,11 @@ main.wide { max-width: none; padding: 0; display: flex; }
 .leaflet-tooltip.room-label { background: transparent; border: 0; box-shadow: none; color: var(--brand-700); font-weight: 600; font-size: 12px; padding: 0; }
 .leaflet-tooltip.room-label::before { display: none; }
 .room-pending span { display: inline-block; transform: translate(-50%, -50%); white-space: nowrap; padding: 1px 5px; border: 1px dashed var(--brand-700); border-radius: 9px; background: rgba(255, 255, 255, .85); color: var(--brand-700); font-size: 11px; font-weight: 600; cursor: pointer; }
+/* Правка углов помещения: вершина тянется, светлая точка на середине стороны добавляет угол. */
+.corner-pt { background: #fff; border: 2px solid var(--brand-700); border-radius: 50%; box-sizing: border-box; cursor: move; }
+.corner-pt:hover { background: var(--brand-700); }
+.corner-add { background: rgba(255, 255, 255, .8); border: 1px dashed var(--brand-700); border-radius: 50%; box-sizing: border-box; opacity: .65; cursor: copy; }
+.corner-add:hover { opacity: 1; }
 .clean-kind { margin: 10px 0 2px; font-weight: 600; font-size: 12px; color: var(--muted); }
 .clean-row { display: grid; grid-template-columns: auto 14px 1fr auto; gap: 6px; align-items: center; padding: 2px 4px; border-radius: 4px; cursor: pointer; font-size: 13px; }
 .clean-row:hover { background: #fee2e2; }

@@ -304,7 +304,7 @@
         tool = name;
         points = [];
         document.querySelectorAll('[data-tool]').forEach(function (b) { b.classList.toggle('primary', b.dataset.tool === name); });
-        map.getContainer().classList.add('drawing');
+        if (name !== 'corners') map.getContainer().classList.add('drawing');
         if (name === 'calibrate') say('Щелкните по двум концам отрезка, длина которого известна (стена, размерная линия). Если размеров нет – обведите помещение с известной площадью из экспликации. Esc – отмена.');
         if (name === 'crop') say('Щелкните по двум противоположным углам рамки вокруг здания – останется только она. Esc – отмена.');
         if (name === 'room') say('Щелкайте по углам помещения. Закончить – щелчок по первой точке или двойной щелчок. Esc – отмена.');
@@ -318,6 +318,7 @@
         tool = null;
         placing = false;
         points = [];
+        if (corners) { var wasCorners = corners.room; corners = null; drawRoom(wasCorners); }
         temp.clearLayers();
         band = bandFrom = null;
         map.dragging.enable();
@@ -380,7 +381,7 @@
             tool = 'calibrate-form';
             temp.clearLayers();
             L.polygon(points.map(function (t) { return ll(t[0], t[1]); }), { color: '#b91c1c', weight: 2, dashArray: '4 4', fillOpacity: 0.1 }).addTo(temp);
-            now = Math.abs(points.reduce(function (s, p, i) { var n = points[(i + 1) % points.length]; return s + p[0] * n[1] - n[0] * p[1]; }, 0)) / 2;
+            now = polyArea(points);
         } else {
             now = Math.hypot(points[1][0] - points[0][0], points[1][1] - points[0][1]);
         }
@@ -516,6 +517,100 @@
             });
         });
     }
+    // --- Правка углов помещения ---
+    // Контур рисуется заново только целиком, а тут двигается по одной вершине:
+    // угол тянется мышью, светлая точка на середине стороны добавляет угол, правый щелчок убирает.
+    var corners = null; // { room, poly } – правка идет на копии, помещение меняется только при сохранении
+    function editCorners(r) {
+        startTool('corners');
+        corners = { room: r, poly: r.polygon.map(function (q) { return q.slice(); }) };
+        if (roomShapes[r.id]) roomsLayer.removeLayer(roomShapes[r.id]);
+        drawCorners();
+        cornersPanel();
+        say('Тяните углы ' + r.title + '. Точка на середине стороны добавляет угол, правый щелчок по углу убирает. Esc – отмена.');
+    }
+    function cornerHandle(x, y, cls, size, drag) {
+        return L.marker(ll(x, y), {
+            icon: L.divIcon({ className: cls, iconSize: [size, size] }),
+            draggable: drag, keyboard: false, zIndexOffset: 1000
+        });
+    }
+    function drawCorners() {
+        temp.clearLayers();
+        var poly = corners.poly;
+        var shape = L.polygon(poly.map(function (q) { return ll(q[0], q[1]); }),
+            { color: '#0f766e', weight: 2, dashArray: '5 4', fillColor: '#14b8a6', fillOpacity: 0.12 }).addTo(temp);
+        poly.forEach(function (q, i) {
+            var h = cornerHandle(q[0], q[1], 'corner-pt', 12, true).addTo(temp);
+            h.on('drag', function (e) {
+                poly[i] = snapCorner(xy(e.target.getLatLng()), i);
+                e.target.setLatLng(ll(poly[i][0], poly[i][1]));
+                shape.setLatLngs(poly.map(function (t) { return ll(t[0], t[1]); }));
+            });
+            h.on('dragend', function () { drawCorners(); cornersPanel(); });
+            h.on('contextmenu', function (e) {
+                L.DomEvent.stop(e);
+                if (poly.length <= 3) return toast('В контуре должно остаться хотя бы три угла.', true);
+                poly.splice(i, 1);
+                drawCorners();
+                cornersPanel();
+            });
+        });
+        poly.forEach(function (q, i) {
+            var n = poly[(i + 1) % poly.length], mid = [round((q[0] + n[0]) / 2), round((q[1] + n[1]) / 2)];
+            var m = cornerHandle(mid[0], mid[1], 'corner-add', 10, false).addTo(temp);
+            m.bindTooltip('Добавить угол');
+            m.on('click', function (e) {
+                L.DomEvent.stop(e);
+                poly.splice(i + 1, 0, mid);
+                drawCorners();
+                cornersPanel();
+            });
+        });
+    }
+    /** Угол липнет к линии другого угла (несколько экранных пикселей) – стены выходят ровными. */
+    function snapCorner(q, i) {
+        var t = snapTolerance(), x = q[0], y = q[1];
+        corners.poly.forEach(function (o, j) {
+            if (j === i) return;
+            if (Math.abs(o[0] - x) < t) x = o[0];
+            if (Math.abs(o[1] - y) < t) y = o[1];
+        });
+        return [round(x), round(y)];
+    }
+    function snapTolerance() {
+        var c = map.getCenter(), p = map.latLngToContainerPoint(c);
+        return Math.abs(map.containerPointToLatLng(L.point(p.x + 6, p.y)).lng - c.lng);
+    }
+    function cornersPanel() {
+        var r = corners.room;
+        panel.innerHTML = '<div class="side-block">' +
+            '<strong>Углы: ' + esc(r.title) + '</strong>' +
+            '<p class="small muted">Площадь по контуру: ' + polyArea(corners.poly).toFixed(2) + ' м², углов: ' + corners.poly.length + '</p>' +
+            '<p class="small muted">Угол липнет к линии соседнего – стены выходят ровными. Площадь пересчитает сервер.</p>' +
+            '<div class="actions"><button class="btn primary" id="cn-ok">Сохранить</button>' +
+            '<button class="btn link" id="cn-no">Отмена</button></div></div>';
+        document.getElementById('cn-no').onclick = stopTool;
+        document.getElementById('cn-ok').onclick = function () {
+            var room = corners.room, poly = corners.poly.slice();
+            send(F.urls.room.replace('__ID__', room.id), 'PUT', { polygon: poly }).then(function (res) {
+                room.polygon = poly;
+                room.area = res.area;
+                stopTool();
+                drawRoom(room);
+                showRoom(room);
+                toast('Контур сохранен.');
+            });
+        };
+    }
+    /** Площадь многоугольника по формуле землемера. */
+    function polyArea(poly) {
+        return Math.abs(poly.reduce(function (s, p, i) {
+            var n = poly[(i + 1) % poly.length];
+            return s + p[0] * n[1] - n[0] * p[1];
+        }, 0)) / 2;
+    }
+
     function roomForm(r, save) {
         var edit = F.canPlans;
         var off = edit ? '' : ' disabled';
@@ -535,6 +630,7 @@
             '<label>Заметки</label><input id="rm-notes" value="' + esc(r.notes || '') + '"' + off + '>' +
             specsBlock(r.specs || {}, edit) +
             (edit ? '<div class="actions"><button class="btn primary" id="rm-ok">Сохранить</button>' +
+                (r.id && r.polygon ? '<button class="btn" id="rm-corners">Поправить углы</button>' : '') +
                 (r.id ? '<button class="btn" id="rm-shape">Обвести заново</button>' : '') +
                 (r.id && F.urls.outline ? '<button class="btn" id="rm-wand">По стенам</button>' : '') +
                 '<button class="btn link" id="rm-no">' + (r.id ? 'Закрыть' : 'Отмена') + '</button></div>' : '') +
@@ -551,6 +647,8 @@
                 specs: specsValues(), polygon: r.polygon
             });
         };
+        var cn = document.getElementById('rm-corners');
+        if (cn) cn.onclick = function () { editCorners(r); };
         var sh = document.getElementById('rm-shape');
         if (sh) sh.onclick = function () { startTool('room'); reshape = r; say('Обведите помещение заново. Esc – отмена.'); };
         var wand = document.getElementById('rm-wand');
