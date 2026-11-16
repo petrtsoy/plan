@@ -56,6 +56,7 @@ class FloorController extends Controller
                     'ox' => $floor->plan->offset_x,
                     'oy' => $floor->plan->offset_y,
                     'calibrated' => $floor->plan->isCalibrated(),
+                    'hide' => $floor->plan->clean['hide'] ?? [],
                 ] : null,
                 'layers' => Layer::orderBy('sort')->get(['id', 'name', 'color', 'visible']),
                 'rooms' => $floor->rooms->filter(fn ($r) => $r->polygon)->map(fn ($r) => self::roomData($r) + ['polygon' => $r->polygon])->values(),
@@ -79,6 +80,8 @@ class FloorController extends Controller
                     'calibrate' => $floor->plan ? route('plans.calibrate', $floor->plan) : null,
                     'crop' => $floor->plan ? route('plans.crop', $floor->plan) : null,
                     'clean' => $floor->plan ? route('plans.clean', $floor->plan) : null,
+                    'erase' => $floor->plan ? route('plans.erase', $floor->plan) : null,
+                    'eraseAt' => $floor->plan ? route('plans.erase.at', $floor->plan) : null,
                     'outline' => $floor->plan ? route('plans.outline', $floor->plan) : null,
                     'rooms' => route('floors.rooms.store', $floor),
                     'room' => route('rooms.update', ['room' => '__ID__']),
@@ -225,7 +228,8 @@ class FloorController extends Controller
     {
         $hide = array_filter((array) $request->query('hide', []), 'is_string');
 
-        return response()->file($plans->cleanResult($plan, $hide), ['Cache-Control' => 'private, max-age=86400']);
+        return response()->file($plans->cleanResult($plan, $hide, $this->eraseInput($request, $plan, $plans)),
+            ['Cache-Control' => 'private, max-age=86400']);
     }
 
     public function clean(Request $request, Plan $plan, FloorPlans $plans): JsonResponse
@@ -235,6 +239,52 @@ class FloorController extends Controller
         $plans->clean($plan, $data['hide']);
 
         return response()->json(['ok' => true, 'message' => 'Чертеж перерисован. Прежний вариант сохранен в истории подложек.']);
+    }
+
+    /** Ластик: что нарисовано под точкой – выбрать линию или подпись щелчком. */
+    public function eraseAt(Request $request, Plan $plan, FloorPlans $plans): JsonResponse
+    {
+        $data = $request->validate([
+            'x' => ['required', 'numeric'], 'y' => ['required', 'numeric'],
+            'r' => ['required', 'numeric', 'min:0'],
+        ]);
+
+        return response()->json(['ok' => true, 'items' => $plans->eraseAt($plan, (float) $data['x'], (float) $data['y'], (float) $data['r'])]);
+    }
+
+    /** Стереть выбранное с чертежа: новая версия подложки без него. */
+    public function erase(Request $request, Plan $plan, FloorPlans $plans): JsonResponse
+    {
+        $request->validate([
+            'rects' => ['present', 'array'], 'rects.*' => ['array', 'size:4'], 'rects.*.*' => ['numeric'],
+            'items' => ['present', 'array'], 'items.*' => ['integer', 'min:0'],
+        ]);
+        abort_unless($plan->is_current, 422, 'Стирать можно только с текущей подложки.');
+        $erase = $this->eraseInput($request, $plan, $plans);
+        abort_unless($erase, 422, 'Нечего стирать: выберите линии или обведите рамкой.');
+        $plans->clean($plan, $plan->clean['hide'] ?? [], $erase);
+
+        return response()->json(['ok' => true, 'message' => 'Чертеж перерисован. Прежний вариант сохранен в истории подложек.']);
+    }
+
+    /**
+     * Ластик из запроса: рамки в метрах этажа и номера элементов – в доли листа поверх уже стертого.
+     * Запрос без ластика (null) – подложка остается с тем, что стерли раньше.
+     */
+    private function eraseInput(Request $request, Plan $plan, FloorPlans $plans): ?array
+    {
+        $raw = $request->input('erase', $request->only(['rects', 'items']) ?: null);
+        $spec = is_string($raw) ? json_decode($raw, true) : $raw;
+        if (! is_array($spec)) {
+            return null;
+        }
+        $rects = array_values(array_filter((array) ($spec['rects'] ?? []),
+            fn ($r) => is_array($r) && count(array_filter($r, 'is_numeric')) === 4));
+        $items = array_values(array_filter((array) ($spec['items'] ?? []), 'is_numeric'));
+
+        return $rects || $items
+            ? $plans->eraseSpec($plan, array_map(fn ($r) => array_map('floatval', array_values($r)), $rects), $items)
+            : null;
     }
 
     /** Помещение для панели: что правится в ней же – номер, название, свойства, ответственный. */

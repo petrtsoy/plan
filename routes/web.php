@@ -83,6 +83,8 @@ Route::middleware(['auth', 'role'])->group(function () {
         Route::get('/plans/{plan}/clean/{index}.png', [FloorController::class, 'cleanPreview'])->whereNumber('index')->name('plans.clean.preview');
         Route::get('/plans/{plan}/clean/result.png', [FloorController::class, 'cleanResult'])->name('plans.clean.result');
         Route::post('/plans/{plan}/clean', [FloorController::class, 'clean']);
+        Route::post('/plans/{plan}/erase', [FloorController::class, 'erase'])->name('plans.erase');
+        Route::post('/plans/{plan}/erase/at', [FloorController::class, 'eraseAt'])->name('plans.erase.at');
         Route::post('/plans/{plan}/outline', [FloorController::class, 'outline'])->name('plans.outline');
         Route::post('/floors/{floor}/rooms', [RoomController::class, 'store'])->name('floors.rooms.store');
         Route::put('/rooms/{room}', [RoomController::class, 'update'])->name('rooms.update');

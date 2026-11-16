@@ -249,7 +249,7 @@
     var SELECT_HINT = 'Обведите рамкой единицы на плане или щелкайте по ним. Ctrl и щелчок работают и без инструмента. Esc – снять.';
     var band = null, bandFrom = null;
     map.on('mousedown', function (e) {
-        if (tool !== 'select') return;
+        if (tool !== 'select' && tool !== 'erase') return;
         bandFrom = e.latlng;
         band = L.rectangle(L.latLngBounds(e.latlng, e.latlng), { color: '#0f766e', weight: 1, dashArray: '4 4', fillOpacity: 0.08 }).addTo(temp);
     });
@@ -260,6 +260,15 @@
         var size = map.latLngToContainerPoint(box.getNorthWest()).distanceTo(map.latLngToContainerPoint(box.getSouthEast()));
         temp.clearLayers();
         band = bandFrom = null;
+        if (tool === 'erase') {
+            // Короткое нажатие – выбрать линию под курсором, рамка – все, что целиком внутри.
+            if (size < 8) return eraseAt(e.latlng);
+            var a = xy(box.getNorthWest()), b = xy(box.getSouthEast());
+            erasing.rects.push([a[0], a[1], b[0], b[1]]);
+            eraseDraw();
+            erasePanel();
+            return erasePreview();
+        }
         if (size < 8) return;
         Object.keys(markers).forEach(function (id) {
             var a = markers[id].asset;
@@ -311,6 +320,11 @@
         if (name === 'wand') say('Щелкните внутри помещения – контур обведется по стенам чертежа. Esc – отмена.');
         if (name === 'zone') say('Щелкайте по углам зоны. Закончить – щелчок по первой точке или двойной щелчок. Esc – отмена.');
         if (name === 'select') { map.dragging.disable(); say(SELECT_HINT); }
+        if (name === 'erase') {
+            map.dragging.disable();
+            eraseStart();
+            say('Щелкайте по лишним линиям и подписям или обводите их рамкой – сотрем с чертежа. Esc – отмена.');
+        }
         if (name === 'place') placeForm(opts);
         if (name === 'clean') { map.getContainer().classList.add('cleaning'); cleanForm(); }
     }
@@ -319,6 +333,9 @@
         placing = false;
         points = [];
         if (corners) { var wasCorners = corners.room; corners = null; drawRoom(wasCorners); }
+        erasing = null;
+        clearTimeout(eraseTimer);
+        marks.clearLayers();
         temp.clearLayers();
         band = bandFrom = null;
         map.dragging.enable();
@@ -476,6 +493,108 @@
         }
     }
 
+    // --- Ластик: убрать с чертежа лишнее ---
+    // Щелчок выбирает линию, заливку или подпись под курсором (сервер ищет их в потоке страницы
+    // PDF), рамка – все, что целиком внутри нее. Применение, как и чистка по типам, перерисовывает
+    // страницу новой версией подложки: геометрия листа не меняется, расставленное стоит на местах.
+    var erasing = null; // { items: [{i, label, color, points}], rects: [[x0, y0, x1, y1]] }
+    var marks = L.layerGroup().addTo(map);
+    function eraseStart() {
+        erasing = { items: [], rects: [] };
+        erasePanel();
+    }
+    /** Что под точкой: берем ближнее, остальное – если щелкнуть еще раз точнее. */
+    function eraseAt(latlng) {
+        var q = xy(latlng);
+        send(F.urls.eraseAt, 'POST', { x: q[0], y: q[1], r: round(snapTolerance() * 1.5) }).then(function (res) {
+            if (tool !== 'erase') return;
+            var it = (res.items || []).filter(function (o) {
+                return !erasing.items.some(function (had) { return had.i === o.i; });
+            })[0];
+            if (!it) return toast('Под курсором ничего нового – щелкните точно по линии или обведите рамкой.', true);
+            erasing.items.push(it);
+            eraseDraw();
+            erasePanel();
+            erasePreview();
+        });
+    }
+    function eraseDraw() {
+        marks.clearLayers();
+        erasing.rects.forEach(function (r) {
+            L.rectangle(L.latLngBounds(ll(r[0], r[1]), ll(r[2], r[3])),
+                { color: '#b91c1c', weight: 1, dashArray: '4 4', fillOpacity: 0.12, interactive: false }).addTo(marks);
+        });
+        erasing.items.forEach(function (it) {
+            var line = it.points.map(function (q) { return ll(q[0], q[1]); });
+            (it.points.length > 1 ? L.polyline(line, { color: '#b91c1c', weight: 4, opacity: 0.6, interactive: false })
+                : L.circleMarker(line[0], { radius: 6, color: '#b91c1c', interactive: false })).addTo(marks);
+        });
+    }
+    /** Как будет после "Стереть": та же картинка результата, что и у чистки по типам. */
+    var eraseTimer;
+    function erasePreview() {
+        clearTimeout(eraseTimer);
+        eraseTimer = setTimeout(function () {
+            if (tool !== 'erase') return;
+            var state = document.getElementById('erase-state');
+            if (!erasing.items.length && !erasing.rects.length) {
+                if (resultLayer) { map.removeLayer(resultLayer); resultLayer = null; }
+                return cleanPreview(null);
+            }
+            var url = F.urls.clean + '/result.png?erase=' + encodeURIComponent(JSON.stringify({
+                rects: erasing.rects, items: erasing.items.map(function (it) { return it.i; })
+            })) + ((F.plan.hide || []).map(function (k) { return '&hide[]=' + encodeURIComponent(k); }).join(''));
+            if (state) state.textContent = 'Перерисовываю…';
+            var img = new Image();
+            img.onload = function () {
+                if (tool !== 'erase') return;
+                if (resultLayer) map.removeLayer(resultLayer);
+                resultLayer = L.imageOverlay(url, bounds, { interactive: false }).addTo(map);
+                cleanPreview(null);
+                if (state) state.textContent = 'Так будет после "Стереть".';
+            };
+            img.onerror = function () { if (state) state.textContent = 'Не удалось перерисовать.'; };
+            img.src = url;
+        }, 350);
+    }
+    function num(v) { return v.toFixed(2).replace('.', ','); }
+    /** Размеры на плане – в метрах, а пока масштаб не задан – в пикселях картинки. */
+    function unit() { return F.plan && F.plan.calibrated ? ' м' : ' px'; }
+    function erasePanel() {
+        var list = erasing.rects.map(function (r, i) {
+            return '<label class="clean-row" data-rect="' + i + '"><span></span><span class="clean-sw" style="border-color:#b91c1c"></span>' +
+                '<span>Рамка ' + num(Math.abs(r[2] - r[0])) + ' x ' + num(Math.abs(r[3] - r[1])) + unit() + '</span>' +
+                '<span class="muted small">убрать</span></label>';
+        }).concat(erasing.items.map(function (it, i) {
+            return '<label class="clean-row" data-item="' + i + '"><span></span>' +
+                '<span class="clean-sw" style="border-color:' + esc(it.color) + '"></span>' +
+                '<span>' + esc(it.label) + '</span><span class="muted small">убрать</span></label>';
+        })).join('');
+        panel.innerHTML = '<div class="side-block"><strong>Ластик</strong>' +
+            '<p class="small muted">Щелчок по чертежу выбирает линию или подпись под курсором, рамка мышью – все, что целиком внутри нее. План сразу покажет, что останется. Esc – отмена.</p>' +
+            '<p class="small muted" id="erase-state" hidden></p>' +
+            (list ? list : '<p class="small muted">Пока ничего не выбрано.</p>') +
+            '<div class="actions"><button class="btn primary" id="erase-ok"' + (list ? '' : ' disabled') + '>Стереть</button>' +
+            '<button class="btn link" id="erase-no">Отмена</button></div></div>';
+        var state = document.getElementById('erase-state');
+        if (state) state.hidden = !(erasing.items.length || erasing.rects.length);
+        panel.querySelectorAll('[data-rect]').forEach(function (row) {
+            row.onclick = function () { erasing.rects.splice(+row.dataset.rect, 1); eraseDraw(); erasePanel(); erasePreview(); };
+        });
+        panel.querySelectorAll('[data-item]').forEach(function (row) {
+            row.onclick = function () { erasing.items.splice(+row.dataset.item, 1); eraseDraw(); erasePanel(); erasePreview(); };
+        });
+        document.getElementById('erase-no').onclick = stopTool;
+        document.getElementById('erase-ok').onclick = function () {
+            this.disabled = true;
+            this.textContent = 'Перерисовываю…';
+            send(F.urls.erase, 'POST', {
+                rects: erasing.rects, items: erasing.items.map(function (it) { return it.i; })
+            }).then(function (res) { sessionToast(res.message); location.reload(); })
+                .catch(function () { erasePanel(); });
+        };
+    }
+
     // Обрезка: рамка по двум углам
     function cropForm() {
         tool = 'crop-form';
@@ -586,7 +705,7 @@
         var r = corners.room;
         panel.innerHTML = '<div class="side-block">' +
             '<strong>Углы: ' + esc(r.title) + '</strong>' +
-            '<p class="small muted">Площадь по контуру: ' + polyArea(corners.poly).toFixed(2) + ' м², углов: ' + corners.poly.length + '</p>' +
+            '<p class="small muted">Площадь по контуру: ' + num(polyArea(corners.poly)) + ' м², углов: ' + corners.poly.length + '</p>' +
             '<p class="small muted">Угол липнет к линии соседнего – стены выходят ровными. Площадь пересчитает сервер.</p>' +
             '<div class="actions"><button class="btn primary" id="cn-ok">Сохранить</button>' +
             '<button class="btn link" id="cn-no">Отмена</button></div></div>';

@@ -195,17 +195,19 @@ class FloorPlans
         return $this->cleanRender($plan, 'preview', $types[$index]['key'], "prev-{$index}");
     }
 
-    /** Как будет после чистки: рамка подложки без типов $hide (галочки еще не применены). */
-    public function cleanResult(Plan $plan, array $hide): string
+    /** Как будет после чистки: рамка подложки без типов $hide и без стертого ластиком. */
+    public function cleanResult(Plan $plan, array $hide, ?array $erase = null): string
     {
         $hide = array_values(array_intersect(array_column($this->cleanTypes($plan), 'key'), $hide));
         sort($hide);
+        $erase ??= $plan->clean['erase'] ?? [];
 
-        return $this->cleanRender($plan, 'result', implode(';', $hide), 'res-'.substr(md5(implode(';', $hide)), 0, 10));
+        return $this->cleanRender($plan, 'result', implode(';', $hide),
+            'res-'.substr(md5(implode(';', $hide).'|'.json_encode($erase)), 0, 10), $erase);
     }
 
     /** Картинка рамки подложки через pdf_clean.py, с кэшем по рамке. */
-    private function cleanRender(Plan $plan, string $mode, string $keys, string $name): string
+    private function cleanRender(Plan $plan, string $mode, string $keys, string $name, array $erase = []): string
     {
         $c = $plan->crop ?? ['x0' => 0, 'y0' => 0, 'x1' => 1, 'y1' => 1];
         $dir = $this->cleanDir($plan);
@@ -213,26 +215,95 @@ class FloorPlans
         $disk = Storage::disk('local');
         if (! $disk->exists($png)) {
             $this->python([$mode, $disk->path("{$dir}/page.pdf"), $keys, $disk->path($png),
-                ...array_map(fn ($v) => (string) $v, [$c['x0'], $c['y0'], $c['x1'], $c['y1'], 2400])]);
+                ...array_map(fn ($v) => (string) $v, [$c['x0'], $c['y0'], $c['x1'], $c['y1'], 2400]),
+                $erase ? json_encode($erase) : '']);
         }
 
         return $disk->path($png);
     }
 
     /**
-     * Скрыть типы на подложке: страница PDF без них, новая версия подложки с той же рамкой.
-     * Геометрия листа не меняется, поэтому масштаб и расставленное остаются как есть.
+     * Ластик: что нарисовано под точкой (метры этажа, радиус $r метров) – линии, заливки и подписи
+     * страницы, ближние первыми. Номер элемента – его место в потоке страницы: по нему и стираем.
+     *
+     * @return list<array{i: int, label: string, color: string, points: list<array{0: float, 1: float}>}>
      */
-    public function clean(Plan $plan, array $hide): Plan
+    public function eraseAt(Plan $plan, float $x, float $y, float $r): array
+    {
+        $dir = $this->cleanDir($plan);
+        $this->cleanTypes($plan); // заодно готовит page.pdf
+        $r = max(0.01, min($r, 5));
+        [$x0, $y0] = $this->toSheet($plan, $x - $r, $y - $r);
+        [$x1, $y1] = $this->toSheet($plan, $x + $r, $y + $r);
+        $out = $this->python(['items', Storage::disk('local')->path("{$dir}/page.pdf"),
+            ...array_map(fn ($v) => (string) round($v, 6), [$x0, $y0, $x1, $y1])], field: 'x', what: 'Ластик');
+
+        return array_map(fn ($it) => [
+            'i' => (int) $it['i'],
+            'label' => $it['label'],
+            'color' => $it['color'],
+            'points' => array_map(fn ($q) => array_map(fn ($v) => round($v, 3),
+                $this->fromSheet($plan, (float) $q[0], (float) $q[1])), $it['pts']),
+        ], json_decode($out, true)['items'] ?? []);
+    }
+
+    /**
+     * Ластик к сохранению: рамки в метрах этажа и номера элементов – в доли листа,
+     * поверх уже стертого (вернуть стертое – только прежней версией подложки).
+     */
+    public function eraseSpec(Plan $plan, array $rects, array $items): array
+    {
+        $was = $plan->clean['erase'] ?? [];
+        $box = [];
+        foreach ($rects as $r) {
+            [$ax, $ay] = $this->toSheet($plan, min($r[0], $r[2]), min($r[1], $r[3]));
+            [$bx, $by] = $this->toSheet($plan, max($r[0], $r[2]), max($r[1], $r[3]));
+            $box[] = array_map(fn ($v) => round($v, 6), [$ax, $ay, $bx, $by]);
+        }
+
+        return array_filter([
+            'rects' => array_values(array_merge($was['rects'] ?? [], $box)),
+            'items' => array_values(array_unique(array_merge($was['items'] ?? [], array_map('intval', $items)))),
+        ]);
+    }
+
+    /** Метры этажа -> доли листа (как рамка обрезки: у подложки может быть своя). */
+    private function toSheet(Plan $plan, float $x, float $y): array
+    {
+        $c = $plan->crop ?? ['x0' => 0, 'y0' => 0, 'x1' => 1, 'y1' => 1];
+        [$px, $py] = $plan->toPixels($x, $y);
+
+        return [$c['x0'] + $px / $plan->width_px * ($c['x1'] - $c['x0']),
+            $c['y0'] + $py / $plan->height_px * ($c['y1'] - $c['y0'])];
+    }
+
+    /** Доли листа -> метры этажа. */
+    private function fromSheet(Plan $plan, float $fx, float $fy): array
+    {
+        $c = $plan->crop ?? ['x0' => 0, 'y0' => 0, 'x1' => 1, 'y1' => 1];
+
+        return $plan->toMeters(($fx - $c['x0']) / ($c['x1'] - $c['x0']) * $plan->width_px,
+            ($fy - $c['y0']) / ($c['y1'] - $c['y0']) * $plan->height_px);
+    }
+
+    /**
+     * Скрыть типы на подложке и стереть выбранное ластиком: страница PDF без них, новая версия
+     * подложки с той же рамкой. Геометрия листа не меняется, поэтому масштаб и расставленное
+     * остаются как есть. Скрытое и стертое считаются от исходного PDF, а не от прошлой чистки,
+     * поэтому $erase приходит уже вместе с прежним (см. eraseSpec).
+     */
+    public function clean(Plan $plan, array $hide, ?array $erase = null): Plan
     {
         $known = array_column($this->cleanTypes($plan), 'key');
         $hide = array_values(array_intersect($known, $hide));
+        $erase = array_filter($erase ?? $plan->clean['erase'] ?? []);
         $disk = Storage::disk('local');
         $base = "plans/{$plan->floor_id}/".now()->format('Ymd-His').'-'.Str::lower(Str::random(6)).'-clean';
         $pdf = null;
-        if ($hide) {
+        if ($hide || $erase) {
             $pdf = "{$base}.pdf";
-            $this->python(['apply', $disk->path($plan->source_path), (string) $plan->page, $disk->path($pdf), implode(';', $hide)]);
+            $this->python(['apply', $disk->path($plan->source_path), (string) $plan->page, $disk->path($pdf),
+                implode(';', $hide), $erase ? json_encode($erase) : '']);
             $this->renderPdf($pdf, "{$base}.png", 1, $plan->crop);
         } else {
             $this->renderPdf($plan->source_path, "{$base}.png", $plan->page, $plan->crop);
@@ -243,10 +314,10 @@ class FloorPlans
         }
         $f = $size[0] / $plan->width_px;
 
-        return DB::transaction(function () use ($plan, $base, $size, $hide, $pdf, $f) {
+        return DB::transaction(function () use ($plan, $base, $size, $hide, $erase, $pdf, $f) {
             $new = $plan->replicate(['is_current', 'calibration']);
             $new->fill(['image_path' => "{$base}.png", 'width_px' => $size[0], 'height_px' => $size[1],
-                'clean' => $hide ? ['hide' => $hide, 'pdf' => $pdf] : null,
+                'clean' => $pdf ? array_filter(['hide' => $hide, 'erase' => $erase, 'pdf' => $pdf]) : null,
                 'is_current' => true, 'user_id' => Auth::id(), 'calibration' => ['cleaned_from' => $plan->id]]);
             if ($plan->isCalibrated()) {
                 $new->meters_per_px = $plan->meters_per_px / $f;

@@ -91,4 +91,42 @@ class PlanCleanTest extends TestCase
         $hidden = collect($this->getJson("/plans/{$new->id}/clean")->json('types'))->where('hidden', true)->pluck('key')->values()->all();
         $this->assertSame(['L:0.50:0.50,0.50,0.50', 'T:10.0:0.50,0.50,0.50'], $hidden);
     }
+
+    /** Ластик: выбрать линию щелчком и стереть ее вместе со всем, что внутри рамки. */
+    public function test_erase_picks_line_and_wipes_frame(): void
+    {
+        $this->ready();
+        Storage::fake('local');
+        $floor = $this->room()->floor;
+        Storage::disk('local')->put('plans/x.pdf', self::pdf());
+        // Без масштаба координаты этажа – пиксели картинки: лист 600 x 400 растянут в 6000 x 4000.
+        $plan = Plan::create(['floor_id' => $floor->id, 'source' => PlanSource::Pdf, 'source_path' => 'plans/x.pdf', 'source_name' => 'x.pdf',
+            'image_path' => 'plans/x.png', 'width_px' => 6000, 'height_px' => 4000, 'page' => 1]);
+        $this->actingAs(User::factory()->role(Role::Engineer)->create());
+
+        // Щелчок по нижней стене: 100..500 по листу -> 1000..5000 px, y 100 снизу -> 3000 px сверху.
+        $items = $this->postJson("/plans/{$plan->id}/erase/at", ['x' => 3000, 'y' => 3000, 'r' => 40])
+            ->assertOk()->json('items');
+        $this->assertSame('Линия 1,00, черный', $items[0]['label']);
+        $this->assertSame([[1000, 3000], [5000, 3000], [5000, 1000]],
+            array_map(fn ($q) => array_map(fn ($v) => (int) round($v), $q), $items[0]['points']));
+
+        // Стираем выбранную стену и все, что целиком в рамке вокруг размерной линии.
+        $this->postJson("/plans/{$plan->id}/erase", ['items' => [$items[0]['i']], 'rects' => [[900, 3100, 5100, 3300]]])->assertOk();
+
+        $new = $floor->fresh()->plan;
+        $this->assertNotEquals($plan->id, $new->id);
+        $this->assertCount(1, $new->clean['erase']['rects']);
+        $this->assertSame([$items[0]['i']], $new->clean['erase']['items']);
+
+        $check = new Process([config('services.python.bin'), base_path('scripts/pdf_clean.py'), 'analyze',
+            Storage::disk('local')->path($new->clean['pdf']), '1', Storage::disk('local')->path('plans/check.pdf')]);
+        $check->mustRun();
+        // Черной стены и серой размерной линии не осталось, текст на месте (стертый – невидимым).
+        $this->assertSame(['T:10.0:0.50,0.50,0.50'], array_column(json_decode($check->getOutput(), true)['types'], 'key'));
+
+        // Стертое переносится в следующую чистку: подложка не вернет его обратно.
+        $this->postJson("/plans/{$new->id}/clean", ['hide' => []])->assertOk();
+        $this->assertSame($new->clean['erase'], $floor->fresh()->plan->clean['erase']);
+    }
 }
